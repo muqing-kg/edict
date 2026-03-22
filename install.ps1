@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════
-# 三省六部 · OpenClaw Multi-Agent System 一键安装脚本 (Windows)
+# 太空舰载系统 · OpenClaw Multi-Agent System 一键安装脚本 (Windows)
 # PowerShell 版本 — 对应 install.sh
 # ══════════════════════════════════════════════════════════════
 #Requires -Version 5.1
@@ -12,7 +12,7 @@ $OC_CFG = Join-Path $OC_HOME "openclaw.json"
 function Write-Banner {
     Write-Host ""
     Write-Host "╔══════════════════════════════════════════╗" -ForegroundColor Blue
-    Write-Host "║  🏛️  三省六部 · OpenClaw Multi-Agent     ║" -ForegroundColor Blue
+    Write-Host "║  🏛️  太空舰载系统 · OpenClaw Multi-Agent     ║" -ForegroundColor Blue
     Write-Host "║       安装向导 (Windows)                  ║" -ForegroundColor Blue
     Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Blue
     Write-Host ""
@@ -23,13 +23,48 @@ function Warn  { param($msg) Write-Host "⚠️  $msg" -ForegroundColor Yellow }
 function Error { param($msg) Write-Host "❌ $msg" -ForegroundColor Red }
 function Info  { param($msg) Write-Host "ℹ️  $msg" -ForegroundColor Blue }
 
+function Get-LocalSoulOverridePath {
+    param([string]$WorkspacePath)
+
+    $upper = Join-Path $WorkspacePath "SOUL.local.md"
+    $lower = Join-Path $WorkspacePath "soul.local.md"
+    if (Test-Path $upper) { return $upper }
+    if (Test-Path $lower) { return $lower }
+    return $null
+}
+
+function Get-ComposedSoulContent {
+    param(
+        [string]$BaseSoulPath,
+        [string]$WorkspacePath
+    )
+
+    $content = (Get-Content $BaseSoulPath -Raw).Replace("__REPO_DIR__", $REPO_DIR)
+    $localPath = Get-LocalSoulOverridePath -WorkspacePath $WorkspacePath
+    if (-not $localPath) {
+        return $content
+    }
+
+    $localItem = Get-Item $localPath
+    if ($localItem.Length -le 0) {
+        return $content
+    }
+
+    $localName = Split-Path $localPath -Leaf
+    $localContent = Get-Content $localPath -Raw
+    $note = "`n`n<!-- LOCAL SOUL OVERRIDE: $localName -->`n## 本机覆盖层（自动合成）`n`n以下内容来自当前机器的 $localName，用于在同步仓库基线后保留本机自定义；若与前文冲突，以本节为准。`n`n"
+    return $content.TrimEnd("`r", "`n") + $note + $localContent
+}
+
 # ── Step 0: 依赖检查 ──
 function Check-Deps {
     Info "检查依赖..."
 
     $oc = Get-Command openclaw -ErrorAction SilentlyContinue
     if (-not $oc) {
-        Error "未找到 openclaw CLI。请先安装 OpenClaw: https://openclaw.ai"
+        Error "未找到 openclaw CLI。此脚本只负责把仓库配置部署到 OpenClaw 运行时。"
+        Info "请先安装并初始化 OpenClaw: https://openclaw.ai"
+        Info "若当前只是在仓库内整理 Agent 基线，可直接编辑 agents/<id>/SOUL.md。"
         exit 1
     }
     Log "OpenClaw CLI: OK"
@@ -47,6 +82,7 @@ function Check-Deps {
 
     if (-not (Test-Path $OC_CFG)) {
         Error "未找到 openclaw.json。请先运行 openclaw 完成初始化。"
+        Info "初始化完成后重新运行安装脚本，脚本会把仓库 SOUL.md 与本机 SOUL.local.md 合成为运行态 SOUL.md / soul.md。"
         exit 1
     }
     Log "openclaw.json: $OC_CFG"
@@ -83,14 +119,23 @@ function Create-Workspaces {
 
         $soulSrc = Join-Path $REPO_DIR "agents\$agent\SOUL.md"
         $soulDst = Join-Path $ws "SOUL.md"
+        $soulCompatDst = Join-Path $ws "soul.md"
         if (Test-Path $soulSrc) {
+            $ts = Get-Date -Format "yyyyMMdd-HHmmss"
             if (Test-Path $soulDst) {
-                $ts = Get-Date -Format "yyyyMMdd-HHmmss"
                 Copy-Item $soulDst "$soulDst.bak.$ts"
                 Warn "已备份旧 SOUL.md → $soulDst.bak.$ts"
+            } elseif (Test-Path $soulCompatDst) {
+                Copy-Item $soulCompatDst "$soulCompatDst.bak.$ts"
+                Warn "检测到旧版 soul.md，已备份 → $soulCompatDst.bak.$ts"
             }
-            $content = (Get-Content $soulSrc -Raw) -replace "__REPO_DIR__", $REPO_DIR
+            $content = Get-ComposedSoulContent -BaseSoulPath $soulSrc -WorkspacePath $ws
             Set-Content -Path $soulDst -Value $content -Encoding UTF8
+            # 兼容镜像：避免旧逻辑读取 soul.md 时丢失更新
+            Set-Content -Path $soulCompatDst -Value $content -Encoding UTF8
+            if (Get-LocalSoulOverridePath -WorkspacePath $ws) {
+                Info "检测到本机覆盖层，将与仓库基线合成输出: $ws"
+            }
         }
         Log "Workspace 已创建: $ws"
 
@@ -98,9 +143,9 @@ function Create-Workspaces {
         $agentsMd = @"
 # AGENTS.md · 工作协议
 
-1. 接到任务先回复"已接旨"。
+1. 接到任务先回复"已接令"。
 2. 输出必须包含：任务ID、结果、证据/文件路径、阻塞项。
-3. 需要协作时，回复尚书省请求转派，不跨部直连。
+3. 需要协作时，回复中继请求转派，不跨部直连。
 4. 涉及删除/外发动作必须明确标注并等待批准。
 "@
         Set-Content -Path (Join-Path $ws "AGENTS.md") -Value $agentsMd -Encoding UTF8
@@ -109,7 +154,7 @@ function Create-Workspaces {
 
 # ── Step 2: 注册 Agents ──
 function Register-Agents {
-    Info "注册三省六部 Agents..."
+    Info "注册太空舰载系统 Agents..."
 
     $ts = Get-Date -Format "yyyyMMdd-HHmmss"
     Copy-Item $OC_CFG "$OC_CFG.bak.sansheng-$ts"
@@ -293,7 +338,7 @@ Restart-Gateway
 
 Write-Host ""
 Write-Host "╔══════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║  🎉  三省六部安装完成！                          ║" -ForegroundColor Green
+Write-Host "║  🎉  太空舰载系统安装完成！                          ║" -ForegroundColor Green
 Write-Host "╚══════════════════════════════════════════════════╝" -ForegroundColor Green
 Write-Host ""
 Write-Host "下一步："

@@ -1,12 +1,12 @@
 # 🚀 快速上手指南
 
-> 从零开始，5 分钟搭建你的三省六部 AI 协同系统
+> 从零开始，5 分钟搭建你的太空舰载系统 AI 协同系统
 
 ---
 
 ## 第一步：安装 OpenClaw
 
-三省六部基于 [OpenClaw](https://openclaw.ai) 运行，请先安装：
+太空舰载系统基于 [OpenClaw](https://openclaw.ai) 运行，请先安装：
 
 ```bash
 # macOS
@@ -22,7 +22,7 @@ brew install openclaw
 openclaw init
 ```
 
-## 第二步：克隆并安装三省六部
+## 第二步：克隆并安装太空舰载系统
 
 ```bash
 git clone https://github.com/cft0808/edict.git
@@ -32,23 +32,27 @@ chmod +x install.sh && ./install.sh
 
 安装脚本会自动完成：
 - ✅ 创建 12 个 Agent Workspace（`~/.openclaw/workspace-*`）
-- ✅ 写入各省部 SOUL.md 人格文件
+- ✅ 写入各节点 SOUL.md 人格文件
 - ✅ 注册 Agent 及权限矩阵到 `openclaw.json`
-- ✅ 配置旨意数据清洗规则
+- ✅ 配置指令数据清洗规则
 - ✅ 构建 React 前端到 `dashboard/dist/`（需 Node.js 18+）
 - ✅ 初始化数据目录
 - ✅ 执行首次数据同步
 - ✅ 重启 Gateway 使配置生效
 
+> ⚠️ 如果本机还没有安装或初始化 OpenClaw，`install.sh` / `install.ps1` 会直接提示并退出，不会伪造 `~/.openclaw/` 运行时目录。
+
+> 💡 需要长期保留的本机 Agent 个性化配置，请写到 `~/.openclaw/workspace-<id>/SOUL.local.md`（兼容 `soul.local.md`）。安装和同步流程会把仓库内 `agents/<id>/SOUL.md` 与本机覆盖层合成为最终运行态 `SOUL.md` / `soul.md`。
+
 ## 第三步：配置消息渠道
 
-在 OpenClaw 中配置消息渠道（Feishu / Telegram / Signal），将 `taizi`（太子）Agent 设为旨意入口。太子会自动分拣闲聊与指令，指令类消息提炼标题后转发中书省。
+在 OpenClaw 中配置消息渠道（Feishu / Telegram / Signal），将 `taizi`（云霄）Agent 设为指令入口。云霄会自动分拣闲聊与指令，指令类消息提炼标题后转发星枢。
 
 ```bash
 # 查看当前渠道
 openclaw channels list
 
-# 添加飞书渠道（入口设为太子）
+# 添加飞书渠道（入口设为云霄）
 openclaw channels add --type feishu --agent taizi
 ```
 
@@ -71,9 +75,9 @@ open http://127.0.0.1:7891
 
 > 💡 **看板即开即用**：`server.py` 内嵌 `dashboard/dashboard.html`，无需额外构建。Docker 镜像包含预构建的 React 前端。
 
-## 第五步：发送第一道旨意
+## 第五步：发送第一道指令
 
-通过消息渠道发送任务（太子会自动识别并转发到中书省）：
+通过消息渠道发送任务（云霄会自动识别并转发到星枢）：
 
 ```
 请帮我用 Python 写一个文本分类器：
@@ -87,22 +91,22 @@ open http://127.0.0.1:7891
 
 打开看板 http://127.0.0.1:7891
 
-1. **📋 旨意看板** — 观察任务在各状态之间流转
-2. **🔭 省部调度** — 查看各部门工作分布
-3. **📜 奏折阁** — 任务完成后自动归档为奏折
+1. **📋 指令看板** — 观察任务在各状态之间流转
+2. **🔭 节点调度** — 查看各节点工作分布
+3. **📜 任务档案** — 任务完成后自动归档为任务档案
 
 任务流转路径：
 ```
-收件 → 太子分拣 → 中书规划 → 门下审议 → 已派发 → 执行中 → 已完成
+收件 → 云霄分拣 → 星枢规划 → 棱镜校核 → 已派发 → 执行中 → 已完成
 ```
 
 ---
 
 ## 🎯 进阶用法
 
-### 使用圣旨模板
+### 使用指令模板
 
-> 看板 → 📜 旨库 → 选择模板 → 填写参数 → 下旨
+> 看板 → 📜 指令模板库 → 选择模板 → 填写参数 → 下发
 
 9 个预设模板：周报生成 · 代码审查 · API 设计 · 竞品分析 · 数据报告 · 博客文章 · 部署方案 · 邮件文案 · 站会摘要
 
@@ -118,11 +122,11 @@ open http://127.0.0.1:7891
 
 ### 叫停 / 取消任务
 
-> 在旨意看板或任务详情中，点击 **⏸ 叫停** 或 **🚫 取消** 按钮
+> 在指令看板或任务详情中，点击 **⏸ 叫停** 或 **🚫 取消** 按钮
 
-### 订阅天下要闻
+### 订阅天眼简报
 
-> 看板 → 📰 天下要闻 → ⚙️ 订阅管理 → 选择分类 / 添加源 / 配飞书推送
+> 看板 → 📰 天眼简报 → ⚙️ 订阅管理 → 选择分类 / 添加源 / 配飞书推送
 
 ---
 
@@ -136,7 +140,7 @@ python3 dashboard/server.py
 
 ### Agent 报错 "No API key found for provider"
 
-这是最常见的问题。三省六部有 11 个 Agent，每个都需要 API Key。
+这是最常见的问题。太空舰载系统有 11 个 Agent，每个都需要 API Key。
 
 ```bash
 # 方法一：为任意 Agent 配置后重新运行 install.sh（推荐）

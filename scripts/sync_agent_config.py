@@ -4,6 +4,7 @@
 支持自动发现 agent workspace 下的 Skills 目录
 """
 import json, pathlib, datetime, logging
+from typing import Optional
 from file_lock import atomic_json_write
 
 log = logging.getLogger('sync_agent_config')
@@ -15,18 +16,18 @@ DATA = BASE / 'data'
 OPENCLAW_CFG = pathlib.Path.home() / '.openclaw' / 'openclaw.json'
 
 ID_LABEL = {
-    'taizi':    {'label': '太子',   'role': '太子',     'duty': '飞书消息分拣与回奏',  'emoji': '🤴'},
-    'main':     {'label': '太子',   'role': '太子',     'duty': '飞书消息分拣与回奏',  'emoji': '🤴'},  # 兼容旧配置
-    'zhongshu': {'label': '中书省', 'role': '中书令',   'duty': '起草任务令与优先级',  'emoji': '📜'},
-    'menxia':   {'label': '门下省', 'role': '侍中',     'duty': '审议与退回机制',      'emoji': '🔍'},
-    'shangshu': {'label': '尚书省', 'role': '尚书令',   'duty': '派单与升级裁决',      'emoji': '📮'},
-    'libu':     {'label': '礼部',   'role': '礼部尚书', 'duty': '文档/汇报/规范',      'emoji': '📝'},
-    'hubu':     {'label': '户部',   'role': '户部尚书', 'duty': '资源/预算/成本',      'emoji': '💰'},
-    'bingbu':   {'label': '兵部',   'role': '兵部尚书', 'duty': '应急与巡检',          'emoji': '⚔️'},
-    'xingbu':   {'label': '刑部',   'role': '刑部尚书', 'duty': '合规/审计/红线',      'emoji': '⚖️'},
-    'gongbu':   {'label': '工部',   'role': '工部尚书', 'duty': '工程交付与自动化',    'emoji': '🔧'},
-    'libu_hr':  {'label': '吏部',   'role': '吏部尚书', 'duty': '人事/培训/Agent管理',  'emoji': '👔'},
-    'zaochao':  {'label': '钦天监', 'role': '朝报官',   'duty': '每日新闻采集与简报',  'emoji': '📰'},
+    'taizi':    {'label': '云霄', 'role': '入口分拣核心', 'duty': '输入分拣与需求提炼', 'emoji': '🧭'},
+    'main':     {'label': '云霄', 'role': '入口分拣核心', 'duty': '输入分拣与需求提炼', 'emoji': '🧭'},  # 兼容旧配置
+    'zhongshu': {'label': '星枢', 'role': '规划与起草中枢', 'duty': '方案规划与执行路径起草', 'emoji': '🧠'},
+    'menxia':   {'label': '棱镜', 'role': '校核与拦截中枢', 'duty': '校核方案并打回修订', 'emoji': '🔍'},
+    'shangshu': {'label': '中继', 'role': '路由与调度中枢', 'duty': '派单、升级与执行协调', 'emoji': '📡'},
+    'libu':     {'label': '文枢', 'role': '文档与表达模块', 'duty': '文档、汇报与输出规范', 'emoji': '📝'},
+    'hubu':     {'label': '源流', 'role': '资源与数据模块', 'duty': '资源、预算、成本与数据分析', 'emoji': '💾'},
+    'bingbu':   {'label': '维控', 'role': '执行与安全模块', 'duty': '运维、安全、应急与巡检', 'emoji': '🛡️'},
+    'xingbu':   {'label': '探针', 'role': '审计与校验模块', 'duty': '合规、审计、测试与质量校验', 'emoji': '⚖️'},
+    'gongbu':   {'label': '机务', 'role': '工程与设施模块', 'duty': '工程实现、自动化与基础设施', 'emoji': '🔧'},
+    'libu_hr':  {'label': '序列', 'role': '编组与权限模块', 'duty': '人员编组、权限治理与 Agent 管理', 'emoji': '🗂️'},
+    'zaochao':  {'label': '天眼', 'role': '态势与情报模块', 'duty': '每日情报采集与简报', 'emoji': '🛰️'},
 }
 
 KNOWN_MODELS = [
@@ -206,6 +207,62 @@ _SOUL_DEPLOY_MAP = {
     'zaochao': 'zaochao',
 }
 
+_SOUL_LOCAL_FILENAMES = ('SOUL.local.md', 'soul.local.md')
+
+
+def _read_text(path: pathlib.Path) -> str:
+    return path.read_text(encoding='utf-8', errors='ignore')
+
+
+def _find_local_soul_override(ws_dir: pathlib.Path):
+    for name in _SOUL_LOCAL_FILENAMES:
+        candidate = ws_dir / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def compose_soul_text(base_text: str, local_override_path: Optional[pathlib.Path]) -> str:
+    base_text = base_text.rstrip()
+    if not local_override_path or not local_override_path.exists():
+        return base_text + '\n'
+
+    local_text = _read_text(local_override_path)
+    if not local_text.strip():
+        return base_text + '\n'
+
+    return (
+        f'{base_text}\n\n'
+        f'<!-- LOCAL SOUL OVERRIDE: {local_override_path.name} -->\n'
+        '## 本机覆盖层（自动合成）\n\n'
+        f'以下内容来自当前机器的 `{local_override_path.name}`，用于在同步仓库基线后保留本机自定义；若与前文冲突，以本节为准。\n\n'
+        f'{local_text.rstrip()}\n'
+    )
+
+
+def _backup_before_overwrite(path: pathlib.Path):
+    if not path.exists():
+        return
+    ts = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    backup = path.with_name(f'{path.name}.bak.{ts}')
+    try:
+        backup.write_text(_read_text(path), encoding='utf-8')
+    except Exception as e:
+        log.warning(f'backup failed for {path}: {e}')
+
+
+def _write_text_if_changed(path: pathlib.Path, text: str) -> bool:
+    try:
+        current = _read_text(path)
+    except FileNotFoundError:
+        current = ''
+    if current == text:
+        return False
+    if current:
+        _backup_before_overwrite(path)
+    path.write_text(text, encoding='utf-8')
+    return True
+
 def sync_scripts_to_workspaces():
     """将项目 scripts/ 目录同步到各 agent workspace（保持 kanban_update.py 等最新）"""
     scripts_src = BASE / 'scripts'
@@ -250,34 +307,36 @@ def sync_scripts_to_workspaces():
 
 
 def deploy_soul_files():
-    """将项目 agents/xxx/SOUL.md 部署到 ~/.openclaw/workspace-xxx/soul.md"""
+    """将项目 agents/xxx/SOUL.md 与本机 SOUL.local.md 合成为运行态文件。"""
     agents_dir = BASE / 'agents'
     deployed = 0
     for proj_name, runtime_id in _SOUL_DEPLOY_MAP.items():
         src = agents_dir / proj_name / 'SOUL.md'
         if not src.exists():
             continue
-        ws_dst = pathlib.Path.home() / f'.openclaw/workspace-{runtime_id}' / 'soul.md'
-        ws_dst.parent.mkdir(parents=True, exist_ok=True)
+        ws_dir = pathlib.Path.home() / f'.openclaw/workspace-{runtime_id}'
+        ws_dst = ws_dir / 'SOUL.md'
+        ws_compat_dst = ws_dir / 'soul.md'
+        ws_dir.mkdir(parents=True, exist_ok=True)
         # 只在内容不同时更新（避免不必要的写入）
-        src_text = src.read_text(encoding='utf-8', errors='ignore')
-        try:
-            dst_text = ws_dst.read_text(encoding='utf-8', errors='ignore')
-        except FileNotFoundError:
-            dst_text = ''
-        if src_text != dst_text:
-            ws_dst.write_text(src_text, encoding='utf-8')
+        src_text = _read_text(src).replace('__REPO_DIR__', str(BASE))
+        src_text = compose_soul_text(src_text, _find_local_soul_override(ws_dir))
+        wrote = False
+        for dst in (ws_dst, ws_compat_dst):
+            if _write_text_if_changed(dst, src_text):
+                wrote = True
+        if wrote:
             deployed += 1
-        # 太子兼容：同步一份到 legacy main agent 目录
+        # 太子兼容：同步一份到 legacy main workspace / agent 目录
         if runtime_id == 'taizi':
-            ag_dst = pathlib.Path.home() / '.openclaw/agents/main/SOUL.md'
-            ag_dst.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                ag_text = ag_dst.read_text(encoding='utf-8', errors='ignore')
-            except FileNotFoundError:
-                ag_text = ''
-            if src_text != ag_text:
-                ag_dst.write_text(src_text, encoding='utf-8')
+            main_ws_dir = pathlib.Path.home() / '.openclaw/workspace-main'
+            main_ws_dir.mkdir(parents=True, exist_ok=True)
+            for main_dst in (main_ws_dir / 'SOUL.md', main_ws_dir / 'soul.md'):
+                _write_text_if_changed(main_dst, src_text)
+            ag_dir = pathlib.Path.home() / '.openclaw/agents/main'
+            ag_dir.mkdir(parents=True, exist_ok=True)
+            for ag_dst in (ag_dir / 'SOUL.md', ag_dir / 'soul.md'):
+                _write_text_if_changed(ag_dst, src_text)
         # 确保 sessions 目录存在
         sess_dir = pathlib.Path.home() / f'.openclaw/agents/{runtime_id}/sessions'
         sess_dir.mkdir(parents=True, exist_ok=True)

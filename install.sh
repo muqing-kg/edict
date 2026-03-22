@@ -1,6 +1,6 @@
 #!/bin/bash
 # ══════════════════════════════════════════════════════════════
-# 三省六部 · OpenClaw Multi-Agent System 一键安装脚本
+# 太空舰载系统 · OpenClaw Multi-Agent System 一键安装脚本
 # ══════════════════════════════════════════════════════════════
 set -e
 
@@ -13,7 +13,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC
 banner() {
   echo ""
   echo -e "${BLUE}╔══════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║  🏛️  三省六部 · OpenClaw Multi-Agent    ║${NC}"
+  echo -e "${BLUE}║  🏛️  太空舰载系统 · OpenClaw Multi-Agent    ║${NC}"
   echo -e "${BLUE}║       安装向导                            ║${NC}"
   echo -e "${BLUE}╚══════════════════════════════════════════╝${NC}"
   echo ""
@@ -24,12 +24,39 @@ warn()  { echo -e "${YELLOW}⚠️  $1${NC}"; }
 error() { echo -e "${RED}❌ $1${NC}"; }
 info()  { echo -e "${BLUE}ℹ️  $1${NC}"; }
 
+compose_soul_content() {
+  local base_src="$1"
+  local ws_dir="$2"
+  local local_upper="$ws_dir/SOUL.local.md"
+  local local_lower="$ws_dir/soul.local.md"
+  local local_src=""
+  local escaped_repo_dir=""
+
+  if [ -f "$local_upper" ]; then
+    local_src="$local_upper"
+  elif [ -f "$local_lower" ]; then
+    local_src="$local_lower"
+  fi
+
+  escaped_repo_dir=$(printf '%s' "$REPO_DIR" | sed 's/[&|]/\\&/g')
+  sed "s|__REPO_DIR__|$escaped_repo_dir|g" "$base_src"
+
+  if [ -n "$local_src" ] && [ -s "$local_src" ]; then
+    printf '\n\n<!-- LOCAL SOUL OVERRIDE: %s -->\n' "$(basename "$local_src")"
+    printf '## 本机覆盖层（自动合成）\n\n'
+    printf '以下内容来自当前机器的 `%s`，用于在同步仓库基线后保留本机自定义；若与前文冲突，以本节为准。\n\n' "$(basename "$local_src")"
+    cat "$local_src"
+  fi
+}
+
 # ── Step 0: 依赖检查 ──────────────────────────────────────────
 check_deps() {
   info "检查依赖..."
   
   if ! command -v openclaw &>/dev/null; then
-    error "未找到 openclaw CLI。请先安装 OpenClaw: https://openclaw.ai"
+    error "未找到 openclaw CLI。此脚本只负责把仓库配置部署到 OpenClaw 运行时。"
+    info "请先安装并初始化 OpenClaw: https://openclaw.ai"
+    info "若当前只是在仓库内整理 Agent 基线，可直接编辑 agents/<id>/SOUL.md。"
     exit 1
   fi
   log "OpenClaw CLI: $(openclaw --version 2>/dev/null || echo 'OK')"
@@ -42,6 +69,7 @@ check_deps() {
 
   if [ ! -f "$OC_CFG" ]; then
     error "未找到 openclaw.json。请先运行 openclaw 完成初始化。"
+    info "初始化完成后重新运行安装脚本，脚本会把仓库 SOUL.md 与本机 SOUL.local.md 合成为运行态 SOUL.md / soul.md。"
     exit 1
   fi
   log "openclaw.json: $OC_CFG"
@@ -96,13 +124,31 @@ create_workspaces() {
   for agent in "${AGENTS[@]}"; do
     ws="$OC_HOME/workspace-$agent"
     mkdir -p "$ws/skills"
-    if [ -f "$REPO_DIR/agents/$agent/SOUL.md" ]; then
-      if [ -f "$ws/SOUL.md" ]; then
-        # 已存在的 SOUL.md，先备份再覆盖
-        cp "$ws/SOUL.md" "$ws/SOUL.md.bak.$(date +%Y%m%d-%H%M%S)"
-        warn "已备份旧 SOUL.md → $ws/SOUL.md.bak.*"
+    soul_src="$REPO_DIR/agents/$agent/SOUL.md"
+    soul_dst="$ws/SOUL.md"
+    soul_compat_dst="$ws/soul.md"
+    if [ -f "$soul_src" ]; then
+      ts=$(date +%Y%m%d-%H%M%S)
+      if [ -f "$soul_dst" ]; then
+        # 以 SOUL.md 为主文件，备份后再覆盖
+        cp "$soul_dst" "$soul_dst.bak.$ts"
+        warn "已备份旧 SOUL.md → $soul_dst.bak.$ts"
+      elif [ -f "$soul_compat_dst" ]; then
+        # 兼容历史只存在 soul.md 的情况
+        cp "$soul_compat_dst" "$soul_compat_dst.bak.$ts"
+        warn "检测到旧版 soul.md，已备份 → $soul_compat_dst.bak.$ts"
       fi
-      sed "s|__REPO_DIR__|$REPO_DIR|g" "$REPO_DIR/agents/$agent/SOUL.md" > "$ws/SOUL.md"
+
+      tmp_soul=$(mktemp)
+      compose_soul_content "$soul_src" "$ws" > "$tmp_soul"
+      cp "$tmp_soul" "$soul_dst"
+      # 兼容镜像：避免旧逻辑读取 soul.md 时丢失更新
+      cp "$tmp_soul" "$soul_compat_dst"
+      rm -f "$tmp_soul"
+
+      if [ -f "$ws/SOUL.local.md" ] || [ -f "$ws/soul.local.md" ]; then
+        info "检测到本机覆盖层，将与仓库基线合成输出: $ws"
+      fi
     fi
     log "Workspace 已创建: $ws"
   done
@@ -112,9 +158,9 @@ create_workspaces() {
     cat > "$OC_HOME/workspace-$agent/AGENTS.md" << 'AGENTS_EOF'
 # AGENTS.md · 工作协议
 
-1. 接到任务先回复"已接旨"。
+1. 接到任务先回复"已接令"。
 2. 输出必须包含：任务ID、结果、证据/文件路径、阻塞项。
-3. 需要协作时，回复尚书省请求转派，不跨部直连。
+3. 需要协作时，回复中继请求转派，不跨部直连。
 4. 涉及删除/外发动作必须明确标注并等待批准。
 AGENTS_EOF
   done
@@ -122,7 +168,7 @@ AGENTS_EOF
 
 # ── Step 2: 注册 Agents ─────────────────────────────────────
 register_agents() {
-  info "注册三省六部 Agents..."
+  info "注册太空舰载系统 Agents..."
 
   # 备份配置
   cp "$OC_CFG" "$OC_CFG.bak.sansheng-$(date +%Y%m%d-%H%M%S)"
@@ -207,20 +253,20 @@ tasks = [
     {
         "id": "JJC-DEMO-001",
         "title": "🎉 系统初始化完成",
-        "official": "工部尚书",
-        "org": "工部",
+        "official": "机务",
+        "org": "机务",
         "state": "Done",
-        "now": "三省六部系统已就绪",
+        "now": "系统已就绪",
         "eta": "-",
         "block": "无",
         "output": "",
         "ac": "系统正常运行",
         "flow_log": [
-            {"at": "2024-01-01T00:00:00Z", "from": "皇上", "to": "中书省", "remark": "下旨初始化三省六部系统"},
-            {"at": "2024-01-01T00:01:00Z", "from": "中书省", "to": "门下省", "remark": "规划方案提交审核"},
-            {"at": "2024-01-01T00:02:00Z", "from": "门下省", "to": "尚书省", "remark": "✅ 准奏"},
-            {"at": "2024-01-01T00:03:00Z", "from": "尚书省", "to": "工部", "remark": "派发：系统初始化"},
-            {"at": "2024-01-01T00:04:00Z", "from": "工部", "to": "尚书省", "remark": "✅ 完成"},
+            {"at": "2024-01-01T00:00:00Z", "from": "主人", "to": "星枢", "remark": "下发系统初始化指令"},
+            {"at": "2024-01-01T00:01:00Z", "from": "星枢", "to": "棱镜", "remark": "规划方案提交校核"},
+            {"at": "2024-01-01T00:02:00Z", "from": "棱镜", "to": "中继", "remark": "✅ 通过校核"},
+            {"at": "2024-01-01T00:03:00Z", "from": "中继", "to": "机务", "remark": "路由：系统初始化"},
+            {"at": "2024-01-01T00:04:00Z", "from": "机务", "to": "中继", "remark": "✅ 完成"},
         ]
     }
 ]
@@ -404,7 +450,7 @@ restart_gateway
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  🎉  三省六部安装完成！                          ║${NC}"
+echo -e "${GREEN}║  🎉  太空舰载系统安装完成！                          ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 echo "下一步："
