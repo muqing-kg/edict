@@ -6,17 +6,17 @@
 
 | 文件名 | 内容 | 对应面板 |
 |--------|------|---------|
-| `01-kanban-main.png` | 旨意看板总览 | 📋 旨意看板 |
-| `02-monitor.png` | 省部调度 | 🔭 省部调度 |
-| `03-task-detail.png` | 任务流转详情（点击任务卡片展开） | 📋 旨意看板 → 详情 |
+| `01-kanban-main.png` | 指令看板总览 | 📋 指令看板 |
+| `02-monitor.png` | 节点调度 | 🔭 节点调度 |
+| `03-task-detail.png` | 任务流转详情（点击任务卡片展开） | 📋 指令看板 → 详情 |
 | `04-model-config.png` | 模型配置面板 | ⚙️ 模型配置 |
 | `05-skills-config.png` | 技能配置面板 | 🛠️ 技能配置 |
-| `06-official-overview.png` | 官员总览（12 位 Agent） | 👥 官员总览 |
+| `06-node-overview.png` | 节点总览（12 位 Agent） | 👥 节点总览 |
 | `07-sessions.png` | 小任务 / 会话 | 💬 小任务 |
-| `08-memorials.png` | 奏折阁 | 📜 奏折阁 |
-| `09-templates.png` | 旨库（圣旨模板） | 📜 旨库 |
-| `10-morning-briefing.png` | 天下要闻 | 📰 天下要闻 |
-| `11-ceremony.png` | 上朝仪式动画 | 开场动画 |
+| `08-archives.png` | 任务档案 | 📜 任务档案 |
+| `09-templates.png` | 指令模板（原始指令模板） | 📜 指令模板 |
+| `10-morning-briefing.png` | 天眼简报 | 📰 天眼简报 |
+| `11-boot-sequence.png` | 舰桥启动动画 | 开场动画 |
 
 ## 自动截图
 

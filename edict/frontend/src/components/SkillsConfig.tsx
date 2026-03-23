@@ -8,7 +8,7 @@ const COMMUNITY_SOURCES = [
     label: 'obra/superpowers',
     emoji: '⚡',
     stars: '66.9k',
-    desc: '完整开发工作流技能集',
+    desc: '完整开发工作流模块集',
     skills: [
       { name: 'brainstorming', url: 'https://raw.githubusercontent.com/obra/superpowers/refs/heads/main/skills/brainstorming/SKILL.md' },
       { name: 'test-driven-development', url: 'https://raw.githubusercontent.com/obra/superpowers/refs/heads/main/skills/test-driven-development/SKILL.md' },
@@ -26,7 +26,7 @@ const COMMUNITY_SOURCES = [
     label: 'anthropics/skills',
     emoji: '🏛️',
     stars: '官方',
-    desc: 'Anthropic 官方技能库',
+    desc: 'Anthropic 官方模块库',
     skills: [
       { name: 'docx', url: 'https://raw.githubusercontent.com/anthropics/skills/main/skills/docx/SKILL.md' },
       { name: 'pdf', url: 'https://raw.githubusercontent.com/anthropics/skills/main/skills/pdf/SKILL.md' },
@@ -44,7 +44,7 @@ const COMMUNITY_SOURCES = [
     label: 'ComposioHQ/awesome-claude-skills',
     emoji: '🌐',
     stars: '39.2k',
-    desc: '100+ 社区精选技能',
+    desc: '100+ 社区精选模块',
     skills: [
       { name: 'github-integration', url: 'https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/master/github-integration/SKILL.md' },
       { name: 'data-analysis', url: 'https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/master/data-analysis/SKILL.md' },
@@ -92,7 +92,7 @@ export default function SkillsConfig() {
       const r = await api.remoteSkillsList();
       if (r.ok) setRemoteSkills(r.remoteSkills || []);
     } catch {
-      toast('远程技能列表加载失败', 'err');
+      toast('远程模块列表加载失败', 'err');
     }
     setRemoteLoading(false);
   };
@@ -123,7 +123,7 @@ export default function SkillsConfig() {
     try {
       const r = await api.addSkill(addForm.agentId, formData.name, formData.desc, formData.trigger);
       if (r.ok) {
-        toast(`✅ 技能 ${formData.name} 已添加到 ${addForm.agentLabel}`, 'ok');
+        toast(`✅ 模块 ${formData.name} 已挂载到 ${addForm.agentLabel}`, 'ok');
         setAddForm(null);
         loadAgentConfig();
       } else {
@@ -143,7 +143,7 @@ export default function SkillsConfig() {
     try {
       const r = await api.addRemoteSkill(agentId, skillName, sourceUrl, description);
       if (r.ok) {
-        toast(`✅ 远程技能 ${skillName} 已添加到 ${agentId}`, 'ok');
+        toast(`✅ 远程模块 ${skillName} 已挂载到 ${agentId}`, 'ok');
         setAddRemoteForm(false);
         setRemoteFormData({ agentId: '', skillName: '', sourceUrl: '', description: '' });
         loadRemoteSkills();
@@ -163,7 +163,7 @@ export default function SkillsConfig() {
     try {
       const r = await api.updateRemoteSkill(skill.agentId, skill.skillName);
       if (r.ok) {
-        toast(`✅ 技能 ${skill.skillName} 已更新`, 'ok');
+        toast(`✅ 模块 ${skill.skillName} 已更新`, 'ok');
         loadRemoteSkills();
       } else {
         toast(r.error || '更新失败', 'err');
@@ -180,7 +180,7 @@ export default function SkillsConfig() {
     try {
       const r = await api.removeRemoteSkill(skill.agentId, skill.skillName);
       if (r.ok) {
-        toast(`🗑️ 技能 ${skill.skillName} 已移除`, 'ok');
+        toast(`🗑️ 模块 ${skill.skillName} 已移除`, 'ok');
         loadRemoteSkills();
         loadAgentConfig();
       } else {
@@ -193,7 +193,7 @@ export default function SkillsConfig() {
   };
 
   const handleQuickImport = async (skillUrl: string, skillName: string) => {
-    if (!quickPickAgent) { toast('请先选择目标 Agent', 'err'); return; }
+    if (!quickPickAgent) { toast('请先选择目标节点', 'err'); return; }
     try {
       const r = await api.addRemoteSkill(quickPickAgent, skillName, skillUrl, '');
       if (r.ok) {
@@ -221,11 +221,11 @@ export default function SkillsConfig() {
             <div className="sk-hdr">
               <span className="sk-emoji">{ag.emoji || '🏛️'}</span>
               <span className="sk-name">{ag.label}</span>
-              <span className="sk-cnt">{(ag.skills || []).length} 技能</span>
+              <span className="sk-cnt">{(ag.skills || []).length} 模块</span>
             </div>
             <div className="sk-list">
               {!(ag.skills || []).length ? (
-                <div className="sk-empty">暂无 Skills</div>
+                <div className="sk-empty">暂无模块</div>
               ) : (
                 (ag.skills || []).map((sk) => (
                   <div className="sk-item" key={sk.name} onClick={() => openSkill(ag.id, sk.name)}>
@@ -237,7 +237,7 @@ export default function SkillsConfig() {
               )}
             </div>
             <div className="sk-add" onClick={() => openAddForm(ag.id, ag.label)}>
-              ＋ 添加技能
+              ＋ 添加模块
             </div>
           </div>
         ))}
@@ -254,23 +254,23 @@ export default function SkillsConfig() {
           style={{ padding: '8px 18px', background: 'var(--acc)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
           onClick={() => { setAddRemoteForm(true); setQuickPickSource(null); }}
         >
-          ＋ 添加远程 Skill
+          ＋ 挂载远程模块
         </button>
         <button
           style={{ padding: '8px 14px', background: 'transparent', color: 'var(--acc)', border: '1px solid var(--acc)', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
           onClick={loadRemoteSkills}
         >
-          ⟳ 刷新列表
+          ⟳ 重扫列表
         </button>
         <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 4 }}>
-          共 {remoteSkills.length} 个远程技能
+          共 {remoteSkills.length} 个远程模块
         </span>
       </div>
 
       {/* 社区快选区 */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.06em', marginBottom: 10 }}>
-          🌐 社区技能源 — 一键导入
+          🌐 社区模块源 — 一键导入
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {COMMUNITY_SOURCES.map((src) => (
@@ -298,13 +298,13 @@ export default function SkillsConfig() {
         {quickPickSource && (
           <div style={{ marginTop: 14, background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 12, padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>目标 Agent：</span>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>目标节点：</span>
               <select
                 value={quickPickAgent}
                 onChange={(e) => setQuickPickAgent(e.target.value)}
                 style={{ padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--text)', fontSize: 12 }}
               >
-                <option value="">— 选择 Agent —</option>
+                <option value="">— 选择节点 —</option>
                 {agentConfig.agents.map((ag) => (
                   <option key={ag.id} value={ag.id}>{ag.emoji} {ag.label} ({ag.id})</option>
                 ))}
@@ -327,13 +327,13 @@ export default function SkillsConfig() {
                       <div style={{ fontSize: 10, color: 'var(--muted)', wordBreak: 'break-all', maxWidth: 180 }}>{sk.url.split('/').slice(-2).join('/')}</div>
                     </div>
                     {alreadyAdded ? (
-                      <span style={{ fontSize: 10, color: '#4caf88', fontWeight: 600 }}>✓ 已导入</span>
+                      <span style={{ fontSize: 10, color: '#4caf88', fontWeight: 600 }}>✓ 已挂载</span>
                     ) : (
                       <button
                         onClick={() => handleQuickImport(sk.url, sk.name)}
                         style={{ padding: '4px 10px', background: 'var(--acc)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap' }}
                       >
-                        导入
+                        挂载
                       </button>
                     )}
                   </div>
@@ -350,8 +350,8 @@ export default function SkillsConfig() {
       ) : remoteSkills.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px', background: 'var(--panel)', borderRadius: 12, border: '1px dashed var(--line)' }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>🌐</div>
-          <div style={{ fontSize: 14, color: 'var(--muted)' }}>尚无远程技能</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>从社区技能源快速导入，或手动添加 URL</div>
+          <div style={{ fontSize: 14, color: 'var(--muted)' }}>尚无远程模块</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>从社区模块源快速导入，或手动添加 URL</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -377,7 +377,7 @@ export default function SkillsConfig() {
                       color: sk.status === 'valid' ? '#4caf88' : '#ff5270',
                       fontWeight: 600,
                     }}>
-                      {sk.status === 'valid' ? '✓ 有效' : '✗ 文件丢失'}
+                      {sk.status === 'valid' ? '✓ 可用' : '✗ 文件缺失'}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--muted)', background: 'var(--panel2)', padding: '2px 8px', borderRadius: 6 }}>
                       {agInfo?.emoji} {agInfo?.label || sk.agentId}
@@ -403,14 +403,14 @@ export default function SkillsConfig() {
                     disabled={isUpdating}
                     style={{ padding: '6px 12px', background: 'transparent', color: 'var(--acc)', border: '1px solid var(--acc)', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}
                   >
-                    {isUpdating ? '⟳' : '更新'}
+                    {isUpdating ? '⟳' : '同步'}
                   </button>
                   <button
                     onClick={() => handleRemove(sk)}
                     disabled={isRemoving}
                     style={{ padding: '6px 12px', background: 'transparent', color: '#ff5270', border: '1px solid #ff5270', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}
                   >
-                    {isRemoving ? '⟳' : '删除'}
+                    {isRemoving ? '⟳' : '移除'}
                   </button>
                 </div>
               </div>
@@ -426,8 +426,8 @@ export default function SkillsConfig() {
       {/* 主 Tab 切换 */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--line)', paddingBottom: 0 }}>
         {[
-          { key: 'local', label: '🏛️ 本地技能', count: agentConfig.agents.reduce((n, a) => n + (a.skills?.length || 0), 0) },
-          { key: 'remote', label: '🌐 远程技能', count: remoteSkills.length },
+          { key: 'local', label: '🏛️ 本地模块', count: agentConfig.agents.reduce((n, a) => n + (a.skills?.length || 0), 0) },
+          { key: 'remote', label: '🌐 远程模块', count: remoteSkills.length },
         ].map((t) => (
           <div
             key={t.key}
@@ -487,9 +487,9 @@ export default function SkillsConfig() {
             <button className="modal-close" onClick={() => setAddForm(null)}>✕</button>
             <div className="modal-body">
               <div style={{ fontSize: 11, color: 'var(--acc)', fontWeight: 700, letterSpacing: '.04em', marginBottom: 4 }}>
-                为 {addForm.agentLabel} 添加技能
+                为 {addForm.agentLabel} 添加模块
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 18 }}>＋ 新增 Skill</div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 18 }}>＋ 新增能力模块</div>
 
               <div
                 style={{
@@ -503,19 +503,19 @@ export default function SkillsConfig() {
                   color: 'var(--muted)',
                 }}
               >
-                <b style={{ color: 'var(--text)' }}>📋 Skill 规范说明</b>
+                <b style={{ color: 'var(--text)' }}>📋 模块规范说明</b>
                 <br />
-                • 技能名称使用<b style={{ color: 'var(--text)' }}>小写英文 + 连字符</b>
+                • 模块名称使用<b style={{ color: 'var(--text)' }}>小写英文 + 连字符</b>
                 <br />
-                • 创建后会生成模板文件 SKILL.md
+                • 创建后会生成模板文件 `SKILL.md`
                 <br />
-                • 技能会在 agent 收到相关任务时<b style={{ color: 'var(--text)' }}>自动激活</b>
+                • 模块会在 agent 收到相关任务时<b style={{ color: 'var(--text)' }}>自动激活</b>
               </div>
 
               <form onSubmit={submitAdd} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                    技能名称 <span style={{ color: '#ff5270' }}>*</span>
+                    模块代号 <span style={{ color: '#ff5270' }}>*</span>
                   </label>
                   <input
                     type="text"
@@ -529,7 +529,7 @@ export default function SkillsConfig() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>技能描述</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>模块说明</label>
                   <input
                     type="text"
                     placeholder="一句话说明用途"
@@ -539,10 +539,10 @@ export default function SkillsConfig() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>触发条件（可选）</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>唤醒条件（可选）</label>
                   <input
                     type="text"
-                    placeholder="何时激活此技能"
+                    placeholder="何时唤醒此模块"
                     value={formData.trigger}
                     onChange={(e) => setFormData((p) => ({ ...p, trigger: e.target.value }))}
                     style={{ width: '100%', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--text)', fontSize: 13, outline: 'none' }}
@@ -557,7 +557,7 @@ export default function SkillsConfig() {
                     disabled={submitting}
                     style={{ padding: '8px 20px', fontSize: 13, background: 'var(--acc)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}
                   >
-                    {submitting ? '⟳ 创建中…' : '📦 创建技能'}
+                    {submitting ? '⟳ 创建中…' : '📦 创建模块'}
                   </button>
                 </div>
               </form>
@@ -573,9 +573,9 @@ export default function SkillsConfig() {
             <button className="modal-close" onClick={() => setAddRemoteForm(false)}>✕</button>
             <div className="modal-body">
               <div style={{ fontSize: 11, color: '#a07aff', fontWeight: 700, letterSpacing: '.04em', marginBottom: 4 }}>
-                远程技能管理
+                远程模块管理
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 18 }}>🌐 添加远程 Skill</div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 18 }}>🌐 挂载远程模块</div>
 
               <div style={{ background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 10, padding: 12, marginBottom: 18, fontSize: 11, color: 'var(--muted)', lineHeight: 1.7 }}>
                 支持 GitHub Raw URL，如：<br />
@@ -584,21 +584,21 @@ export default function SkillsConfig() {
 
               <form onSubmit={submitAddRemote} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>目标 Agent <span style={{ color: '#ff5270' }}>*</span></label>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>目标节点 <span style={{ color: '#ff5270' }}>*</span></label>
                   <select
                     required
                     value={remoteFormData.agentId}
                     onChange={(e) => setRemoteFormData((p) => ({ ...p, agentId: e.target.value }))}
                     style={{ width: '100%', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--text)', fontSize: 13 }}
                   >
-                    <option value="">— 选择 Agent —</option>
+                    <option value="">— 选择节点 —</option>
                     {agentConfig.agents.map((ag) => (
                       <option key={ag.id} value={ag.id}>{ag.emoji} {ag.label} ({ag.id})</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>技能名称 <span style={{ color: '#ff5270' }}>*</span></label>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>模块代号 <span style={{ color: '#ff5270' }}>*</span></label>
                   <input
                     type="text"
                     required
@@ -620,7 +620,7 @@ export default function SkillsConfig() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>描述（可选）</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>模块说明（可选）</label>
                   <input
                     type="text"
                     placeholder="一句话说明用途"
@@ -636,7 +636,7 @@ export default function SkillsConfig() {
                     disabled={remoteSubmitting}
                     style={{ padding: '8px 20px', fontSize: 13, background: '#a07aff', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}
                   >
-                    {remoteSubmitting ? '⟳ 下载中…' : '🌐 添加远程技能'}
+                    {remoteSubmitting ? '⟳ 下载中…' : '🌐 挂载远程模块'}
                   </button>
                 </div>
               </form>

@@ -4,8 +4,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 三省六部主题色
-        imperial: {
+        // 舰载系统主题色
+        command: {
           50: '#fef7ed',
           100: '#fdecd4',
           200: '#fad5a8',
@@ -17,7 +17,7 @@ export default {
           800: '#95330f',
           900: '#792c10',
         },
-        dynasty: {
+        signal: {
           50: '#fdf4f3',
           100: '#fce8e4',
           200: '#fad4ce',

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """JSON → Postgres 数据迁移脚本。
 
-读取旧版 data/tasks_source.json，导入到 Edict Postgres 数据库。
+读取原始 data/tasks_source.json，导入到 Edict Postgres 数据库。
 
 用法:
   # 确保 Postgres 已运行且 schema 已创建（alembic upgrade head）
@@ -33,11 +33,11 @@ from app.models.task import Task, TaskState
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 log = logging.getLogger("migrate")
 
-# 旧版状态 → Edict TaskState
+# 原始状态 → Edict TaskState
 STATE_MAP = {
-    "Taizi": TaskState.Taizi,
-    "Zhongshu": TaskState.Zhongshu,
-    "Menxia": TaskState.Menxia,
+    "Yunxiao": TaskState.Yunxiao,
+    "Xingshu": TaskState.Xingshu,
+    "Lengjing": TaskState.Lengjing,
     "Assigned": TaskState.Assigned,
     "Next": TaskState.Next,
     "Doing": TaskState.Doing,
@@ -47,17 +47,17 @@ STATE_MAP = {
     "Cancelled": TaskState.Cancelled,
     "Pending": TaskState.Pending,
     # Fallbacks
-    "Inbox": TaskState.Taizi,
-    "": TaskState.Taizi,
+    "Inbox": TaskState.Yunxiao,
+    "": TaskState.Yunxiao,
 }
 
 
 def parse_old_task(old: dict) -> dict:
-    """将旧版 task JSON 转换为 Edict Task 参数。"""
-    state_str = old.get("state", "Taizi")
-    state = STATE_MAP.get(state_str, TaskState.Taizi)
+    """将原始 task JSON 转换为 Edict Task 参数。"""
+    state_str = old.get("state", "Yunxiao")
+    state = STATE_MAP.get(state_str, TaskState.Yunxiao)
 
-    legacy_id = old.get("id", "")
+    source_task_id = old.get("id", "")
     title = old.get("title", "未命名任务")
 
     # 解析时间
@@ -74,21 +74,21 @@ def parse_old_task(old: dict) -> dict:
         "priority": "中",
         "state": state,
         "assignee_org": old.get("org", None),
-        "creator": old.get("official", "emperor"),
-        "tags": [legacy_id] if legacy_id else [],
+        "creator": old.get("owner", "system"),
+        "tags": [source_task_id] if source_task_id else [],
         "flow_log": old.get("flow_log", []),
         "progress_log": old.get("progress_log", []),
         "todos": old.get("todos", []),
         "scheduler": old.get("scheduler", None),
         "meta": {
-            "legacy_id": legacy_id,
-            "legacy_state": state_str,
-            "legacy_output": old.get("output", ""),
-            "legacy_ac": old.get("ac", ""),
-            "legacy_eta": old.get("eta", ""),
-            "legacy_block": old.get("block", ""),
+            "source_task_id": source_task_id,
+            "source_state": state_str,
+            "source_output": old.get("output", ""),
+            "source_ac": old.get("ac", ""),
+            "source_eta": old.get("eta", ""),
+            "source_block": old.get("block", ""),
         },
-        "created_at": updated_at,  # 旧版没有 created_at，用 updated_at 近似
+        "created_at": updated_at,  # 原始 JSON 没有 created_at，用 updated_at 近似
         "updated_at": updated_at,
     }
 
@@ -99,10 +99,10 @@ async def migrate(file_path: Path, dry_run: bool = False):
         log.error(f"数据文件不存在: {file_path}")
         return
 
-    # 读取旧版数据
+    # 读取原始数据
     raw = file_path.read_text(encoding="utf-8")
     old_tasks = json.loads(raw)
-    log.info(f"读取到 {len(old_tasks)} 个旧版任务")
+    log.info(f"读取到 {len(old_tasks)} 个原始任务")
 
     # 统计
     stats = {"total": len(old_tasks), "migrated": 0, "skipped": 0, "errors": 0}
@@ -118,7 +118,7 @@ async def migrate(file_path: Path, dry_run: bool = False):
         log.info("=== DRY RUN 模式，不写入数据库 ===")
         for old in old_tasks:
             params = parse_old_task(old)
-            log.info(f"  [{params['meta']['legacy_id']}] {params['title'][:40]} → {params['state'].value}")
+            log.info(f"  [{params['meta']['source_task_id']}] {params['title'][:40]} → {params['state'].value}")
         log.info(f"Dry run 完成: {stats['total']} 个任务待迁移")
         return
 
@@ -127,22 +127,22 @@ async def migrate(file_path: Path, dry_run: bool = False):
         for old in old_tasks:
             try:
                 params = parse_old_task(old)
-                legacy_id = params["meta"]["legacy_id"]
+                source_task_id = params["meta"]["source_task_id"]
 
                 # 检查是否已迁移
                 from sqlalchemy import select
                 existing = await db.execute(
-                    select(Task).where(Task.tags.contains([legacy_id]))
+                    select(Task).where(Task.tags.contains([source_task_id]))
                 )
                 if existing.scalars().first():
-                    log.debug(f"跳过已存在: {legacy_id}")
+                    log.debug(f"跳过已存在: {source_task_id}")
                     stats["skipped"] += 1
                     continue
 
                 task = Task(**params)
                 db.add(task)
                 stats["migrated"] += 1
-                log.info(f"✅ 迁移: [{legacy_id}] {params['title'][:40]} → {params['state'].value}")
+                log.info(f"✅ 迁移: [{source_task_id}] {params['title'][:40]} → {params['state'].value}")
 
             except Exception as e:
                 log.error(f"❌ 迁移失败: {old.get('id', '?')}: {e}")

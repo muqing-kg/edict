@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-三省六部 · Skill 管理工具
+舰载系统 · Skill 管理工具
 支持从本地或远程 URL 添加、更新、查看和移除 skills
 
 Usage:
-  python3 scripts/skill_manager.py add-remote --agent zhongshu --name code_review \\
+  python3 scripts/skill_manager.py add-remote --agent xingshu --name code_review \\
     --source https://raw.githubusercontent.com/org/skills/main/code_review/SKILL.md \\
     --description "代码审查"
   
   python3 scripts/skill_manager.py list-remote
   
-  python3 scripts/skill_manager.py update-remote --agent zhongshu --name code_review
+  python3 scripts/skill_manager.py update-remote --agent xingshu --name code_review
   
-  python3 scripts/skill_manager.py remove-remote --agent zhongshu --name code_review
+  python3 scripts/skill_manager.py remove-remote --agent xingshu --name code_review
   
-  python3 scripts/skill_manager.py import-official-hub --agents zhongshu,menxia,shangshu
+  python3 scripts/skill_manager.py import-skills-hub --agents xingshu,lengjing,zhongji
 """
 import sys
 import json
@@ -26,7 +26,7 @@ import urllib.error
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from utils import now_iso, safe_name, read_json
+from utils import now_iso, safe_name, read_json, resolve_workspace, discover_workspaces
 
 OCLAW_HOME = Path.home() / '.openclaw'
 
@@ -77,7 +77,7 @@ def add_remote(agent_id: str, name: str, source_url: str, description: str = '')
         return False
     
     # 设置 workspace
-    workspace = OCLAW_HOME / f'workspace-{agent_id}' / 'skills' / name
+    workspace = resolve_workspace(agent_id) / 'skills' / name
     workspace.mkdir(parents=True, exist_ok=True)
     skill_md = workspace / 'SKILL.md'
     
@@ -125,8 +125,7 @@ def list_remote() -> bool:
     
     remote_skills = []
     
-    for ws_dir in OCLAW_HOME.glob('workspace-*'):
-        agent_id = ws_dir.name.replace('workspace-', '')
+    for agent_id, ws_dir in sorted(discover_workspaces().items()):
         skills_dir = ws_dir / 'skills'
         if not skills_dir.exists():
             continue
@@ -174,7 +173,7 @@ def update_remote(agent_id: str, name: str) -> bool:
         print(f'❌ 错误：agent_id 或 skill 名称含非法字符')
         return False
     
-    workspace = OCLAW_HOME / f'workspace-{agent_id}' / 'skills' / name
+    workspace = resolve_workspace(agent_id) / 'skills' / name
     source_json = workspace / '.source.json'
     
     if not source_json.exists():
@@ -201,7 +200,7 @@ def remove_remote(agent_id: str, name: str) -> bool:
         print(f'❌ 错误：agent_id 或 skill 名称含非法字符')
         return False
     
-    workspace = OCLAW_HOME / f'workspace-{agent_id}' / 'skills' / name
+    workspace = resolve_workspace(agent_id) / 'skills' / name
     source_json = workspace / '.source.json'
     
     if not source_json.exists():
@@ -218,7 +217,7 @@ def remove_remote(agent_id: str, name: str) -> bool:
         return False
 
 
-OFFICIAL_SKILLS_HUB_BASE = 'https://raw.githubusercontent.com/openclaw-ai/skills-hub/main'
+PRESET_SKILLS_HUB_BASE = 'https://raw.githubusercontent.com/openclaw-ai/skills-hub/main'
 # 备用镜像（GitHub 国内访问不稳定时自动切换）
 _FALLBACK_HUB_BASES = [
     'https://ghproxy.com/https://raw.githubusercontent.com/openclaw-ai/skills-hub/main',
@@ -232,11 +231,11 @@ def _get_hub_url(skill_name):
     """获取 skill 的 Hub URL，支持环境变量覆盖"""
     base = (Path.home() / '.openclaw' / 'skills-hub-url').read_text().strip() \
         if (Path.home() / '.openclaw' / 'skills-hub-url').exists() else None
-    base = base or os.environ.get(_HUB_BASE_ENV) or OFFICIAL_SKILLS_HUB_BASE
+    base = base or os.environ.get(_HUB_BASE_ENV) or PRESET_SKILLS_HUB_BASE
     return f'{base.rstrip("/")}/{skill_name}/SKILL.md'
 
 
-OFFICIAL_SKILLS_HUB = {
+PRESET_SKILLS_HUB = {
     'code_review': _get_hub_url('code_review'),
     'api_design': _get_hub_url('api_design'),
     'security_audit': _get_hub_url('security_audit'),
@@ -246,17 +245,17 @@ OFFICIAL_SKILLS_HUB = {
 }
 
 SKILL_AGENT_MAPPING = {
-    'code_review': ('bingbu', 'xingbu', 'menxia'),
-    'api_design': ('bingbu', 'gongbu', 'menxia'),
-    'security_audit': ('xingbu', 'menxia'),
-    'data_analysis': ('hubu', 'menxia'),
-    'doc_generation': ('libu', 'menxia'),
-    'test_framework': ('gongbu', 'xingbu', 'menxia'),
+    'code_review': ('weikong', 'tanzhen', 'lengjing'),
+    'api_design': ('weikong', 'jiwu', 'lengjing'),
+    'security_audit': ('tanzhen', 'lengjing'),
+    'data_analysis': ('yuanliu', 'lengjing'),
+    'doc_generation': ('wenshu', 'lengjing'),
+    'test_framework': ('jiwu', 'tanzhen', 'lengjing'),
 }
 
 
-def import_official_hub(agent_ids: list) -> bool:
-    """从官方 Skills Hub 导入指定的 skills 到指定 agents。
+def import_skills_hub(agent_ids: list) -> bool:
+    """从预设 Skills Hub 导入指定的 skills 到指定 agents。
     如果未指定 agents，使用该 skill 的推荐 agents。
     """
     if not agent_ids:
@@ -269,11 +268,11 @@ def import_official_hub(agent_ids: list) -> bool:
     success = 0
     failed = []
     
-    for skill_name, url in OFFICIAL_SKILLS_HUB.items():
+    for skill_name, url in PRESET_SKILLS_HUB.items():
         # 确定目标 agents
         target_agents = agent_ids
         if not agent_ids:
-            target_agents = SKILL_AGENT_MAPPING.get(skill_name, ['menxia'])
+            target_agents = SKILL_AGENT_MAPPING.get(skill_name, ['lengjing'])
         
         print(f'\n📥 正在导入 skill: {skill_name}')
         print(f'   目标 agents: {", ".join(target_agents)}')
@@ -282,13 +281,13 @@ def import_official_hub(agent_ids: list) -> bool:
         effective_url = url
         for agent_id in target_agents:
             total += 1
-            ok = add_remote(agent_id, skill_name, effective_url, f'官方 skill：{skill_name}')
+            ok = add_remote(agent_id, skill_name, effective_url, f'预设 skill：{skill_name}')
             if not ok and effective_url == url:
                 # 主 URL 失败，尝试镜像
                 for fb_base in _FALLBACK_HUB_BASES:
                     fb_url = f'{fb_base.rstrip("/")}/{skill_name}/SKILL.md'
                     print(f'   🔄 尝试镜像: {fb_url}')
-                    ok = add_remote(agent_id, skill_name, fb_url, f'官方 skill：{skill_name}')
+                    ok = add_remote(agent_id, skill_name, fb_url, f'预设 skill：{skill_name}')
                     if ok:
                         effective_url = fb_url  # 后续 agent 也用这个镜像
                         break
@@ -303,19 +302,19 @@ def import_official_hub(agent_ids: list) -> bool:
         for f in failed:
             print(f'   - {f}')
         print(f'\n💡 排查建议:')
-        print(f'   1. 检查网络: curl -I {OFFICIAL_SKILLS_HUB_BASE}/code_review/SKILL.md')
+        print(f'   1. 检查网络: curl -I {PRESET_SKILLS_HUB_BASE}/code_review/SKILL.md')
         print(f'   2. 设置代理: export https_proxy=http://your-proxy:port')
-        print(f'   3. 使用镜像: export {_HUB_BASE_ENV}=https://ghproxy.com/{OFFICIAL_SKILLS_HUB_BASE}')
+        print(f'   3. 使用镜像: export {_HUB_BASE_ENV}=https://ghproxy.com/{PRESET_SKILLS_HUB_BASE}')
         print(f'   4. 自定义源: echo "https://your-mirror/skills" > ~/.openclaw/skills-hub-url')
         print(f'   5. 单独重试: python3 scripts/skill_manager.py add-remote --agent <agent> --name <skill> --source <url>')
     return success == total
 
 
 def main():
-    parser = argparse.ArgumentParser(description='三省六部 Skill 管理工具', 
+    parser = argparse.ArgumentParser(description='舰载系统 Skill 管理工具',
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     subparsers = parser.add_subparsers(dest='cmd', help='命令')
-    
+
     # add-remote
     add_parser = subparsers.add_parser('add-remote', help='从远程 URL 添加 skill')
     add_parser.add_argument('--agent', required=True, help='目标 Agent ID')
@@ -336,8 +335,8 @@ def main():
     remove_parser.add_argument('--agent', required=True, help='Agent ID')
     remove_parser.add_argument('--name', required=True, help='Skill 名称')
     
-    # import-official-hub
-    import_parser = subparsers.add_parser('import-official-hub', help='从官方库导入 skills')
+    # import-skills-hub
+    import_parser = subparsers.add_parser('import-skills-hub', help='从预设库导入 skills')
     import_parser.add_argument('--agents', default='', help='逗号分隔的 Agent IDs（可选）')
     
     # check-updates
@@ -367,9 +366,9 @@ def main():
         success = remove_remote(args.agent, args.name)
         sys.exit(0 if success else 1)
     
-    elif args.cmd == 'import-official-hub':
+    elif args.cmd == 'import-skills-hub':
         agent_list = [a.strip() for a in args.agents.split(',') if a.strip()] if args.agents else []
-        success = import_official_hub(agent_list)
+        success = import_skills_hub(agent_list)
         sys.exit(0 if success else 1)
     
     elif args.cmd == 'check-updates':

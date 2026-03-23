@@ -28,10 +28,6 @@ class Settings(BaseSettings):
     openclaw_bin: str = "openclaw"
     openclaw_project_dir: str | None = None
 
-    # ── Legacy 兼容 ──
-    legacy_data_dir: str = "../data"
-    legacy_tasks_file: str = "../data/tasks_source.json"
-
     # ── 调度参数 ──
     stall_threshold_sec: int = 180
     max_dispatch_retry: int = 3

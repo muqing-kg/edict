@@ -1,8 +1,8 @@
-"""Task 模型 — 三省六部任务核心表。
+"""Task 模型 — 舰载系统任务核心表。
 
 对应当前 tasks_source.json 中的每一条任务记录。
-state 对应三省六部流转状态机：
-  Taizi → Zhongshu → Menxia → Assigned → Doing → Review → Done
+state 对应舰载系统流转状态机：
+  Yunxiao → Xingshu → Lengjing → Assigned → Doing → Review → Done
 """
 
 import enum
@@ -26,13 +26,13 @@ from ..db import Base
 
 
 class TaskState(str, enum.Enum):
-    """任务状态枚举 — 映射三省六部流程。"""
-    Taizi = "Taizi"           # 太子分拣
-    Zhongshu = "Zhongshu"     # 中书省起草
-    Menxia = "Menxia"         # 门下省审议
-    Assigned = "Assigned"     # 尚书省已将任务派发
+    """任务状态枚举 — 映射舰载系统流程。"""
+    Yunxiao = "Yunxiao"           # 云霄分拣
+    Xingshu = "Xingshu"     # 星枢起草
+    Lengjing = "Lengjing"         # 棱镜审议
+    Assigned = "Assigned"     # 中继已将任务派发
     Next = "Next"             # 待执行
-    Doing = "Doing"           # 六部执行中
+    Doing = "Doing"           # 执行群组执行中
     Review = "Review"         # 审查汇总
     Done = "Done"             # 完成
     Blocked = "Blocked"       # 阻塞
@@ -45,45 +45,45 @@ TERMINAL_STATES = {TaskState.Done, TaskState.Cancelled}
 
 # 状态流转合法路径
 STATE_TRANSITIONS = {
-    TaskState.Taizi: {TaskState.Zhongshu, TaskState.Cancelled},
-    TaskState.Zhongshu: {TaskState.Menxia, TaskState.Cancelled, TaskState.Blocked},
-    TaskState.Menxia: {TaskState.Assigned, TaskState.Zhongshu, TaskState.Cancelled},  # 封驳退回中书
+    TaskState.Yunxiao: {TaskState.Xingshu, TaskState.Cancelled},
+    TaskState.Xingshu: {TaskState.Lengjing, TaskState.Cancelled, TaskState.Blocked},
+    TaskState.Lengjing: {TaskState.Assigned, TaskState.Xingshu, TaskState.Cancelled},  # 打回修订后回星枢
     TaskState.Assigned: {TaskState.Doing, TaskState.Next, TaskState.Cancelled, TaskState.Blocked},
     TaskState.Next: {TaskState.Doing, TaskState.Cancelled},
     TaskState.Doing: {TaskState.Review, TaskState.Done, TaskState.Blocked, TaskState.Cancelled},
     TaskState.Review: {TaskState.Done, TaskState.Doing, TaskState.Cancelled},  # 审查不通过退回
-    TaskState.Blocked: {TaskState.Taizi, TaskState.Zhongshu, TaskState.Menxia, TaskState.Assigned, TaskState.Doing},
+    TaskState.Blocked: {TaskState.Yunxiao, TaskState.Xingshu, TaskState.Lengjing, TaskState.Assigned, TaskState.Doing},
 }
 
 # 状态 → Agent 映射
 STATE_AGENT_MAP = {
-    TaskState.Taizi: "taizi",
-    TaskState.Zhongshu: "zhongshu",
-    TaskState.Menxia: "menxia",
-    TaskState.Assigned: "shangshu",
-    TaskState.Review: "shangshu",
+    TaskState.Yunxiao: "main",
+    TaskState.Xingshu: "xingshu",
+    TaskState.Lengjing: "lengjing",
+    TaskState.Assigned: "zhongji",
+    TaskState.Review: "zhongji",
 }
 
-# 组织 → Agent 映射（六部）
+# 组织 → Agent 映射（执行群组）
 ORG_AGENT_MAP = {
-    "户部": "hubu",
-    "礼部": "libu",
-    "兵部": "bingbu",
-    "刑部": "xingbu",
-    "工部": "gongbu",
-    "吏部": "libu_hr",
+    "源流": "yuanliu",
+    "文枢": "wenshu",
+    "维控": "weikong",
+    "探针": "tanzhen",
+    "机务": "jiwu",
+    "序列": "xulie",
 }
 
 
 class Task(Base):
-    """三省六部任务表。"""
+    """舰载系统任务表。"""
     __tablename__ = "tasks"
 
     id = Column(String(32), primary_key=True, comment="任务ID, e.g. JJC-20260301-001")
     title = Column(Text, nullable=False, comment="任务标题")
-    state = Column(Enum(TaskState, name="task_state"), nullable=False, default=TaskState.Taizi, index=True)
-    org = Column(String(32), nullable=False, default="太子", comment="当前执行部门")
-    official = Column(String(32), default="", comment="责任官员")
+    state = Column(Enum(TaskState, name="task_state"), nullable=False, default=TaskState.Yunxiao, index=True)
+    org = Column(String(32), nullable=False, default="云霄", comment="当前执行部门")
+    owner = Column(String(32), default="", comment="责任节点")
     now = Column(Text, default="", comment="当前进展描述")
     eta = Column(String(64), default="-", comment="预计完成时间")
     block = Column(Text, default="无", comment="阻塞原因")
@@ -122,7 +122,7 @@ class Task(Base):
             "title": self.title,
             "state": self.state.value if self.state else "",
             "org": self.org,
-            "official": self.official,
+            "owner": self.owner,
             "now": self.now,
             "eta": self.eta,
             "block": self.block,

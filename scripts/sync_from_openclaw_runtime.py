@@ -40,22 +40,21 @@ def state_from_session(age_ms, aborted):
     return 'Next'
 
 
-def detect_official(agent_id):
+def detect_owner(agent_id):
     mapping = {
-        'main':    ('储君', '太子'),        # legacy id for taizi
-        'taizi':   ('储君', '太子'),
-        'zhongshu': ('中书令', '中书省'),
-        'menxia':  ('侍中', '门下省'),
-        'shangshu': ('尚书令', '尚书省'),
-        'hubu':    ('户部尚书', '户部'),
-        'libu':    ('礼部尚书', '礼部'),
-        'bingbu':  ('兵部尚书', '兵部'),
-        'xingbu':  ('刑部尚书', '刑部'),
-        'gongbu':  ('工部尚书', '工部'),
-        'libu_hr': ('吏部尚书', '吏部'),
-        'zaochao': ('钦天监', '钦天监'),
+        'main':   ('入口分拣核心', '云霄'),
+        'xingshu': ('规划与起草中枢', '星枢'),
+        'lengjing':  ('校核与拦截中枢', '棱镜'),
+        'zhongji': ('路由与调度中枢', '中继'),
+        'yuanliu':    ('资源与数据模块', '源流'),
+        'wenshu':    ('文档与表达模块', '文枢'),
+        'weikong':  ('执行与安全模块', '维控'),
+        'tanzhen':  ('审计与校验模块', '探针'),
+        'jiwu':  ('工程与设施模块', '机务'),
+        'xulie': ('编组与权限模块', '序列'),
+        'tianyan': ('态势与情报模块', '天眼'),
     }
-    return mapping.get(agent_id, ('尚书令', '尚书省'))
+    return mapping.get(agent_id, ('路由与调度中枢', '中继'))
 
 
 def load_activity(session_file, limit=12):
@@ -135,7 +134,7 @@ def build_task(agent_id, session_key, row, now_ms):
     aborted = bool(row.get('abortedLastRun'))
     state = state_from_session(age_ms, aborted)
 
-    official, org = detect_official(agent_id)
+    owner, org = detect_owner(agent_id)
     channel = row.get('lastChannel') or (row.get('origin') or {}).get('channel') or '-'
     session_file = row.get('sessionFile', '')
     
@@ -175,7 +174,7 @@ def build_task(agent_id, session_key, row, now_ms):
     return {
         'id': f"OC-{agent_id}-{str(session_id)[:8]}",
         'title': title,
-        'official': official,
+        'owner': owner,
         'org': org,
         'state': state,
         'now': latest_act,
@@ -246,7 +245,7 @@ def main():
             except Exception:
                 pass
 
-        # merge manual parallel tasks (用于军机处并行看板展示)
+        # merge manual parallel tasks (用于总控台并行看板展示)
         manual_tasks_file = DATA / 'manual_parallel_tasks.json'
         if manual_tasks_file.exists():
             try:
@@ -302,7 +301,7 @@ def main():
         
         tasks = filtered_tasks
         
-        # ── 保留已有的 JJC-* 旨意任务（不覆盖皇上下旨记录）──
+        # ── 保留已有的 JJC-* 指令任务（不覆盖主人下发记录）──
         # JJC 任务的 now 字段由 Agent 自己通过 kanban_update.py progress 命令主动上报，
         # 不再从会话日志中被动抓取。这里只做合并，不做 activity 映射。
         existing_tasks_file = DATA / 'tasks_source.json'
@@ -311,7 +310,7 @@ def main():
                 existing = json.loads(existing_tasks_file.read_text())
                 jjc_existing = [t for t in existing if str(t.get('id', '')).startswith('JJC')]
                 
-                # 去掉 tasks 里已有的 JJC（以防重复），再把旨意放到最前面
+                # 去掉 tasks 里已有的 JJC（以防重复），再把指令放到最前面
                 tasks = [t for t in tasks if not str(t.get('id', '')).startswith('JJC')]
                 tasks = jjc_existing + tasks
             except Exception as e:

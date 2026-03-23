@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""同步各节点统计数据 → data/nodes_stats.json"""
+import json, pathlib, datetime, logging
+from file_lock import atomic_json_write
+
+log = logging.getLogger('nodes')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
+
+BASE = pathlib.Path(__file__).resolve().parent.parent
+DATA = BASE / 'data'
+AGENTS_ROOT = pathlib.Path.home() / '.openclaw' / 'agents'
+OPENCLAW_CFG = pathlib.Path.home() / '.openclaw' / 'openclaw.json'
+
+# Anthropic 定价（每1M token，美元）
+MODEL_PRICING = {
+    'anthropic/claude-sonnet-4-6':  {'in':3.0, 'out':15.0, 'cr':0.30, 'cw':3.75},
+    'anthropic/claude-opus-4-5':    {'in':15.0,'out':75.0, 'cr':1.50, 'cw':18.75},
+    'anthropic/claude-haiku-3-5':   {'in':0.8, 'out':4.0,  'cr':0.08, 'cw':1.0},
+    'openai/gpt-4o':                {'in':2.5, 'out':10.0, 'cr':1.25, 'cw':0},
+    'openai/gpt-4o-mini':           {'in':0.15,'out':0.6,  'cr':0.075,'cw':0},
+    'google/gemini-2.0-flash':      {'in':0.075,'out':0.3, 'cr':0,    'cw':0},
+    'google/gemini-2.5-pro':        {'in':1.25,'out':10.0, 'cr':0,    'cw':0},
+}
+
+NODES = [
+    {'id':'main',   'label':'云霄', 'role':'入口分拣核心', 'emoji':'🧭','rank':'核心层'},
+    {'id':'xingshu','label':'星枢', 'role':'规划与起草中枢', 'emoji':'🧠','rank':'核心层'},
+    {'id':'lengjing',  'label':'棱镜', 'role':'校核与拦截中枢', 'emoji':'🔍','rank':'核心层'},
+    {'id':'zhongji','label':'中继', 'role':'路由与调度中枢', 'emoji':'📡','rank':'核心层'},
+    {'id':'wenshu',    'label':'文枢', 'role':'文档与表达模块', 'emoji':'📝','rank':'执行层'},
+    {'id':'yuanliu',    'label':'源流', 'role':'资源与数据模块', 'emoji':'💾','rank':'执行层'},
+    {'id':'weikong',  'label':'维控', 'role':'执行与安全模块', 'emoji':'🛡️','rank':'执行层'},
+    {'id':'tanzhen',  'label':'探针', 'role':'审计与校验模块', 'emoji':'⚖️','rank':'执行层'},
+    {'id':'jiwu',  'label':'机务', 'role':'工程与设施模块', 'emoji':'🔧','rank':'执行层'},
+    {'id':'xulie', 'label':'序列', 'role':'编组与权限模块', 'emoji':'🗂️','rank':'执行层'},
+    {'id':'tianyan', 'label':'天眼', 'role':'态势与情报模块', 'emoji':'🛰️','rank':'感知层'},
+]
+
+ORG_LABEL_ALIASES = {
+    'main': {'云霄'},
+    'xingshu': {'星枢'},
+    'lengjing': {'棱镜'},
+    'zhongji': {'中继'},
+    'wenshu': {'文枢'},
+    'yuanliu': {'源流'},
+    'weikong': {'维控'},
+    'tanzhen': {'探针'},
+    'jiwu': {'机务'},
+    'xulie': {'序列'},
+    'tianyan': {'天眼'},
+}
+
+def rj(p, d):
+    try: return json.loads(pathlib.Path(p).read_text())
+    except Exception: return d
+
+
+# Pre-load openclaw config once (avoid re-reading per agent)
+_OPENCLAW_CACHE = None
+
+def _load_openclaw_cfg():
+    global _OPENCLAW_CACHE
+    if _OPENCLAW_CACHE is None:
+        _OPENCLAW_CACHE = rj(OPENCLAW_CFG, {})
+    return _OPENCLAW_CACHE
+
+
+def normalize_model(model_value, fallback='anthropic/claude-sonnet-4-6'):
+    if isinstance(model_value, str) and model_value:
+        return model_value
+    if isinstance(model_value, dict):
+        return model_value.get('primary') or model_value.get('id') or fallback
+    return fallback
+
+def get_model(agent_id):
+    cfg = _load_openclaw_cfg()
+    default = normalize_model(cfg.get('agents',{}).get('defaults',{}).get('model',{}), 'anthropic/claude-sonnet-4-6')
+    for a in cfg.get('agents',{}).get('list',[]):
+        if a.get('id') == agent_id:
+            return normalize_model(a.get('model', default), default)
+    return default
+
+def scan_agent(agent_id):
+    """从 sessions.json 读取 token 统计（累计所有 session）"""
+    sj = AGENTS_ROOT / agent_id / 'sessions' / 'sessions.json'
+    if not sj.exists():
+        return {'tokens_in':0,'tokens_out':0,'cache_read':0,'cache_write':0,'sessions':0,'last_active':None,'messages':0}
+    
+    data = rj(sj, {})
+    tin = tout = cr = cw = 0
+    last_ts = None
+    
+    for sid, v in data.items():
+        tin += v.get('inputTokens', 0) or 0
+        tout += v.get('outputTokens', 0) or 0
+        cr  += v.get('cacheRead', 0) or 0
+        cw  += v.get('cacheWrite', 0) or 0
+        ts = v.get('updatedAt')
+        if ts:
+            try:
+                t = datetime.datetime.fromtimestamp(ts/1000) if isinstance(ts,int) else datetime.datetime.fromisoformat(ts.replace('Z','+00:00'))
+                if last_ts is None or t > last_ts: last_ts = t
+            except Exception: pass
+    
+    # Estimate message count from most recent session JSONL
+    msg_count = 0
+    if data:
+        try:
+            sf_key = max(data.keys(), key=lambda k: data[k].get('updatedAt',0) or 0, default=None)
+        except Exception:
+            sf_key = None
+    else:
+        sf_key = None
+    if sf_key and data[sf_key].get('sessionFile'):
+        sf = AGENTS_ROOT / agent_id / 'sessions' / pathlib.Path(data[sf_key]['sessionFile']).name
+        try:
+            lines = sf.read_text(errors='ignore').splitlines()
+            for ln in lines:
+                try:
+                    e = json.loads(ln)
+                    if e.get('type') == 'message' and e.get('message',{}).get('role') == 'assistant':
+                        msg_count += 1
+                except Exception: pass
+        except Exception: pass
+
+    return {
+        'tokens_in': tin, 'tokens_out': tout,
+        'cache_read': cr, 'cache_write': cw,
+        'sessions': len(data),
+        'last_active': last_ts.strftime('%Y-%m-%d %H:%M') if last_ts else None,
+        'messages': msg_count,
+    }
+
+def calc_cost(s, model):
+    p = MODEL_PRICING.get(model, MODEL_PRICING['anthropic/claude-sonnet-4-6'])
+    usd = (s['tokens_in']/1e6*p['in'] + s['tokens_out']/1e6*p['out']
+         + s['cache_read']/1e6*p['cr'] + s['cache_write']/1e6*p['cw'])
+    return round(usd, 4)
+
+def get_task_stats(agent_id, tasks):
+    aliases = ORG_LABEL_ALIASES.get(agent_id, set())
+    done   = [t for t in tasks if t.get('state')=='Done' and t.get('org') in aliases]
+    active = [t for t in tasks if t.get('state') in ('Doing','Review','Assigned') and t.get('org') in aliases]
+    fl = sum(1 for t in tasks for f in t.get('flow_log',[])
+             if f.get('from') in aliases or f.get('to') in aliases)
+    # 参与的指令（JJC）列表
+    participated = []
+    for t in tasks:
+        if not t['id'].startswith('JJC'): continue
+        for f in t.get('flow_log',[]):
+            if f.get('from') in aliases or f.get('to') in aliases:
+                if t['id'] not in [x['id'] for x in participated]:
+                    participated.append({'id':t['id'],'title':t.get('title',''),'state':t.get('state','')})
+                break
+    return {'tasks_done':len(done),'tasks_active':len(active),
+            'flow_participations':fl,'participated_edicts':participated}
+
+def get_hb(agent_id, live_tasks):
+    for t in live_tasks:
+        if t.get('sourceMeta',{}).get('agentId')==agent_id and t.get('heartbeat'):
+            return t['heartbeat']
+    return {'status':'idle','label':'⚪ 待命','ageSec':None}
+
+def main():
+    tasks = rj(DATA/'tasks_source.json', [])
+    live  = rj(DATA/'live_status.json', {})
+    live_tasks = live.get('tasks', [])
+
+    result = []
+    for off in NODES:
+        model   = get_model(off['id'])
+        ss      = scan_agent(off['id'])
+        ts      = get_task_stats(off['id'], tasks)
+        hb      = get_hb(off['id'], live_tasks)
+        cost_usd = calc_cost(ss, model)
+
+        result.append({
+            **off,
+            'model': model,
+            'model_short': model.split('/')[-1] if isinstance(model, str) and '/' in model else str(model),
+            'sessions': ss['sessions'],
+            'tokens_in': ss['tokens_in'],
+            'tokens_out': ss['tokens_out'],
+            'cache_read': ss['cache_read'],
+            'cache_write': ss['cache_write'],
+            'tokens_total': ss['tokens_in'] + ss['tokens_out'],
+            'messages': ss['messages'],
+            'cost_usd': cost_usd,
+            'cost_cny': round(cost_usd * 7.25, 2),
+            'last_active': ss['last_active'],
+            'heartbeat': hb,
+            'tasks_done': ts['tasks_done'],
+            'tasks_active': ts['tasks_active'],
+            'flow_participations': ts['flow_participations'],
+            'participated_edicts': ts['participated_edicts'],
+            'merit_score': ts['tasks_done']*10 + ts['flow_participations']*2 + min(ss['sessions'],20),
+        })
+
+    result.sort(key=lambda x: x['merit_score'], reverse=True)
+    for i, r in enumerate(result): r['merit_rank'] = i+1
+
+    totals = {
+        'tokens_total': sum(r['tokens_total'] for r in result),
+        'cache_total':  sum(r['cache_read']+r['cache_write'] for r in result),
+        'cost_usd':     round(sum(r['cost_usd'] for r in result), 2),
+        'cost_cny':     round(sum(r['cost_cny'] for r in result), 2),
+        'tasks_done':   sum(r['tasks_done'] for r in result),
+    }
+    top = max(result, key=lambda x: x['merit_score'], default={})
+
+    payload = {
+        'generatedAt': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'nodes': result,
+        'totals': totals,
+        'top_node': top.get('label',''),
+    }
+    atomic_json_write(DATA/'nodes_stats.json', payload)
+    log.info(f'{len(result)} nodes | cost=¥{totals["cost_cny"]} | top={top.get("label","")}')
+
+if __name__ == '__main__':
+    main()

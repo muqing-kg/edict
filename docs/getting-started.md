@@ -42,18 +42,18 @@ chmod +x install.sh && ./install.sh
 
 > ⚠️ 如果本机还没有安装或初始化 OpenClaw，`install.sh` / `install.ps1` 会直接提示并退出，不会伪造 `~/.openclaw/` 运行时目录。
 
-> 💡 需要长期保留的本机 Agent 个性化配置，请写到 `~/.openclaw/workspace-<id>/SOUL.local.md`（兼容 `soul.local.md`）。安装和同步流程会把仓库内 `agents/<id>/SOUL.md` 与本机覆盖层合成为最终运行态 `SOUL.md` / `soul.md`。
+> 💡 需要长期保留的本机 Agent 个性化配置，请写到 `~/.openclaw/workspace-<id>/SOUL.local.md`（同时支持 `soul.local.md`）。安装和同步流程会把仓库内 `agents/<id>/SOUL.md` 与本机覆盖层合成为最终运行态 `SOUL.md` / `soul.md`。
 
 ## 第三步：配置消息渠道
 
-在 OpenClaw 中配置消息渠道（Feishu / Telegram / Signal），将 `taizi`（云霄）Agent 设为指令入口。云霄会自动分拣闲聊与指令，指令类消息提炼标题后转发星枢。
+在 OpenClaw 中配置消息渠道（Feishu / Telegram / Signal），将 `main`（云霄）Agent 设为指令入口。云霄会自动分拣闲聊与指令，指令类消息提炼标题后转发星枢。
 
 ```bash
 # 查看当前渠道
 openclaw channels list
 
 # 添加飞书渠道（入口设为云霄）
-openclaw channels add --type feishu --agent taizi
+openclaw channels add --type feishu --agent main
 ```
 
 参考 OpenClaw 文档：https://docs.openclaw.ai/channels
@@ -144,19 +144,19 @@ python3 dashboard/server.py
 
 ```bash
 # 方法一：为任意 Agent 配置后重新运行 install.sh（推荐）
-openclaw agents add taizi          # 按提示输入 Anthropic API Key
+openclaw agents add main          # 按提示输入 Anthropic API Key
 cd edict && ./install.sh            # 自动同步到所有 Agent
 
 # 方法二：手动复制 auth 文件
 MAIN_AUTH=$(find ~/.openclaw/agents -name auth-profiles.json | head -1)
-for agent in taizi zhongshu menxia shangshu hubu libu bingbu xingbu gongbu; do
+for agent in main xingshu lengjing zhongji yuanliu wenshu weikong tanzhen jiwu; do
   mkdir -p ~/.openclaw/agents/$agent/agent
   cp "$MAIN_AUTH" ~/.openclaw/agents/$agent/agent/auth-profiles.json
 done
 
 # 方法三：逐个配置
-openclaw agents add taizi
-openclaw agents add zhongshu
+openclaw agents add main
+openclaw agents add xingshu
 # ... 其他 Agent
 ```
 

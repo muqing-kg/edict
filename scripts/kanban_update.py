@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-看板任务更新工具 - 供各省部 Agent 调用
+看板任务更新工具 - 供舰载系统各节点 Agent 调用
 
 本工具操作 data/tasks_source.json（JSON 看板模式）。
 如果您已部署 edict/backend（Postgres + Redis 事件总线模式），
@@ -10,14 +10,14 @@
 两种模式互相独立，数据不会自动同步。
 
 用法:
-  # 新建任务（收旨时）
-  python3 kanban_update.py create JJC-20260223-012 "任务标题" Zhongshu 中书省 中书令
+  # 新建任务（收令时）
+  python3 kanban_update.py create JJC-20260223-012 "任务标题" Xingshu 星枢 星枢
 
   # 更新状态
-  python3 kanban_update.py state JJC-20260223-012 Menxia "规划方案已提交门下省"
+  python3 kanban_update.py state JJC-20260223-012 Lengjing "规划方案已提交棱镜"
 
   # 添加流转记录
-  python3 kanban_update.py flow JJC-20260223-012 "中书省" "门下省" "规划方案提交审核"
+  python3 kanban_update.py flow JJC-20260223-012 "星枢" "棱镜" "规划方案提交校核"
 
   # 完成任务
   python3 kanban_update.py done JJC-20260223-012 "/path/to/output" "任务完成摘要"
@@ -43,30 +43,68 @@ from file_lock import atomic_json_read, atomic_json_update  # noqa: E402
 from utils import now_iso  # noqa: E402
 
 STATE_ORG_MAP = {
-    'Taizi': '太子', 'Zhongshu': '中书省', 'Menxia': '门下省', 'Assigned': '尚书省',
-    'Doing': '执行中', 'Review': '尚书省', 'Done': '完成', 'Blocked': '阻塞',
+    'Yunxiao': '云霄', 'Xingshu': '星枢', 'Lengjing': '棱镜', 'Assigned': '中继',
+    'Doing': '执行中', 'Review': '中继', 'Done': '完成', 'Blocked': '阻塞',
+}
+
+_DISPLAY_TO_CANONICAL = {
+    '主人': '主人',
+    '云霄': '云霄',
+    '星枢': '星枢',
+    '棱镜': '棱镜',
+    '中继': '中继',
+    '文枢': '文枢',
+    '源流': '源流',
+    '维控': '维控',
+    '探针': '探针',
+    '机务': '机务',
+    '序列': '序列',
+    '天眼': '天眼',
+    '执行群组': '执行群组',
+    '回传': '主人',
+    '核心层': '核心层',
+    '执行层': '执行层',
+    '感知层': '感知层',
+    '星枢起草': '星枢',
+    '棱镜校核': '棱镜',
+    '中继路由': '中继',
+}
+
+_DISPLAY_OWNER_TO_CANONICAL = {
+    '主人': '主人',
+    '云霄': '云霄',
+    '星枢': '星枢',
+    '棱镜': '棱镜',
+    '中继': '中继',
+    '文枢': '文枢',
+    '源流': '源流',
+    '维控': '维控',
+    '探针': '探针',
+    '机务': '机务',
+    '序列': '序列',
+    '天眼': '天眼',
 }
 
 _STATE_AGENT_MAP = {
-    'Taizi': 'taizi',
-    'Zhongshu': 'zhongshu',
-    'Menxia': 'menxia',
-    'Assigned': 'shangshu',
-    'Review': 'shangshu',
-    'Pending': 'zhongshu',
+    'Yunxiao': 'main',
+    'Xingshu': 'xingshu',
+    'Lengjing': 'lengjing',
+    'Assigned': 'zhongji',
+    'Review': 'zhongji',
+    'Pending': 'xingshu',
 }
 
 _ORG_AGENT_MAP = {
-    '礼部': 'libu', '户部': 'hubu', '兵部': 'bingbu',
-    '刑部': 'xingbu', '工部': 'gongbu', '吏部': 'libu_hr',
-    '中书省': 'zhongshu', '门下省': 'menxia', '尚书省': 'shangshu',
+    '文枢': 'wenshu', '源流': 'yuanliu', '维控': 'weikong',
+    '探针': 'tanzhen', '机务': 'jiwu', '序列': 'xulie',
+    '星枢': 'xingshu', '棱镜': 'lengjing', '中继': 'zhongji',
 }
 
 _AGENT_LABELS = {
-    'main': '太子', 'taizi': '太子',
-    'zhongshu': '中书省', 'menxia': '门下省', 'shangshu': '尚书省',
-    'libu': '礼部', 'hubu': '户部', 'bingbu': '兵部', 'xingbu': '刑部',
-    'gongbu': '工部', 'libu_hr': '吏部', 'zaochao': '钦天监',
+    'main': '云霄',
+    'xingshu': '星枢', 'lengjing': '棱镜', 'zhongji': '中继',
+    'wenshu': '文枢', 'yuanliu': '源流', 'weikong': '维控', 'tanzhen': '探针',
+    'jiwu': '机务', 'xulie': '序列', 'tianyan': '天眼',
 }
 
 MAX_PROGRESS_LOG = 100  # 单任务最大进展日志条数
@@ -86,7 +124,15 @@ def find_task(tasks, task_id):
     return next((t for t in tasks if t.get('id') == task_id), None)
 
 
-# 旨意标题最低要求
+def _canonical_label(label):
+    return _DISPLAY_TO_CANONICAL.get(label, label)
+
+
+def _canonical_owner(label):
+    return _DISPLAY_OWNER_TO_CANONICAL.get(label, label)
+
+
+# 指令标题最低要求
 _MIN_TITLE_LEN = 6
 _JUNK_TITLES = {
     '?', '？', '好', '好的', '是', '否', '不', '不是', '对', '了解', '收到',
@@ -105,8 +151,8 @@ def _sanitize_text(raw, max_len=80):
     t = re.sub(r'[/\\.~][A-Za-z0-9_\-./]+(?:\.(?:py|js|ts|json|md|sh|yaml|yml|txt|csv|html|css|log))?', '', t)
     # 4) 剥离 URL
     t = re.sub(r'https?://\S+', '', t)
-    # 5) 清理常见前缀: "传旨:" "下旨:" "下旨（xxx）:" 等
-    t = re.sub(r'^(传旨|下旨)([（(][^)）]*[)）])?[：:\uff1a]\s*', '', t)
+    # 5) 清理常见前缀: "传旨:" "下旨:" "下发指令:" 等
+    t = re.sub(r'^(传旨|下旨|下发指令)([（(][^)）]*[)）])?[：:\uff1a]\s*', '', t)
     # 6) 剥离系统元数据关键词
     t = re.sub(r'(message_id|session_id|chat_id|open_id|user_id|tenant_key)\s*[:=]\s*\S+', '', t)
     # 7) 合并多余空白
@@ -156,12 +202,12 @@ def _infer_agent_id_from_runtime(task=None):
 
 
 def _is_valid_task_title(title):
-    """校验标题是否足够作为一个旨意任务。"""
+    """校验标题是否足够作为一个指令任务。"""
     t = (title or '').strip()
     if len(t) < _MIN_TITLE_LEN:
-        return False, f'标题过短（{len(t)}<{_MIN_TITLE_LEN}字），疑似非旨意'
+        return False, f'标题过短（{len(t)}<{_MIN_TITLE_LEN}字），疑似非指令'
     if t.lower() in _JUNK_TITLES:
-        return False, f'标题 "{t}" 不是有效旨意'
+        return False, f'标题 "{t}" 不是有效指令'
     # 纯标点或问号
     if re.fullmatch(r'[\s?？!！.。,，…·\-—~]+', t):
         return False, '标题只有标点符号'
@@ -174,18 +220,19 @@ def _is_valid_task_title(title):
     return True, ''
 
 
-def cmd_create(task_id, title, state, org, official, remark=None):
-    """新建任务（收旨时立即调用）"""
+def cmd_create(task_id, title, state, org, owner, remark=None):
+    """新建任务（收令时立即调用）"""
     # 清洗标题（剥离元数据）
     title = _sanitize_title(title)
-    # 旨意标题校验
+    # 指令标题校验
     valid, reason = _is_valid_task_title(title)
     if not valid:
         log.warning(f'⚠️ 拒绝创建 {task_id}：{reason}')
         print(f'[看板] 拒绝创建：{reason}', flush=True)
         return
-    actual_org = STATE_ORG_MAP.get(state, org)
-    clean_remark = _sanitize_remark(remark) if remark else f"下旨：{title}"
+    actual_org = _canonical_label(STATE_ORG_MAP.get(state, org))
+    owner = _canonical_owner(owner)
+    clean_remark = _sanitize_remark(remark) if remark else f"下发：{title}"
     def modifier(tasks):
         existing = next((t for t in tasks if t.get('id') == task_id), None)
         if existing:
@@ -196,11 +243,11 @@ def cmd_create(task_id, title, state, org, official, remark=None):
                 log.warning(f'任务 {task_id} 已存在 (state={existing["state"]})，将被覆盖')
         tasks = [t for t in tasks if t.get('id') != task_id]
         tasks.insert(0, {
-            "id": task_id, "title": title, "official": official,
+            "id": task_id, "title": title, "owner": owner,
             "org": actual_org, "state": state,
-            "now": clean_remark[:60] if remark else f"已下旨，等待{actual_org}接旨",
+            "now": clean_remark[:60] if remark else f"已下发，等待{actual_org}接令",
             "eta": "-", "block": "无", "output": "", "ac": "",
-            "flow_log": [{"at": now_iso(), "from": "皇上", "to": actual_org, "remark": clean_remark}],
+            "flow_log": [{"at": now_iso(), "from": "主人", "to": actual_org, "remark": clean_remark}],
             "updatedAt": now_iso()
         })
         return tasks
@@ -211,17 +258,17 @@ def cmd_create(task_id, title, state, org, official, remark=None):
 
 # ── 状态流转合法性校验 ──
 # 只允许文档定义的状态路径:
-# Pending→Taizi→Zhongshu→Menxia→Assigned→Doing→Review→Done
+# Pending→Yunxiao→Xingshu→Lengjing→Assigned→Doing→Review→Done
 # 额外: Blocked 可双向切换, Cancelled 从任意非终态可达, Next→Doing
 _VALID_TRANSITIONS = {
-    'Pending':   {'Taizi', 'Cancelled'},
-    'Taizi':     {'Zhongshu', 'Cancelled'},
-    'Zhongshu':  {'Menxia', 'Cancelled'},
-    'Menxia':    {'Assigned', 'Zhongshu', 'Cancelled'},   # 封驳可回中书
+    'Pending':   {'Yunxiao', 'Cancelled'},
+    'Yunxiao':     {'Xingshu', 'Cancelled'},
+    'Xingshu':  {'Lengjing', 'Cancelled'},
+    'Lengjing':    {'Assigned', 'Xingshu', 'Cancelled'},   # 打回修订后回星枢
     'Assigned':  {'Doing', 'Next', 'Blocked', 'Cancelled'},
     'Next':      {'Doing', 'Blocked', 'Cancelled'},
     'Doing':     {'Review', 'Blocked', 'Cancelled'},
-    'Review':    {'Done', 'Menxia', 'Doing', 'Cancelled'},  # 可打回重审/重做
+    'Review':    {'Done', 'Lengjing', 'Doing', 'Cancelled'},  # 可打回重审/重做
     'Blocked':   {'Doing', 'Next', 'Assigned', 'Review', 'Cancelled'},  # 解除后回原位
     'Done':      set(),       # 终态
     'Cancelled': set(),       # 终态
@@ -261,6 +308,8 @@ def cmd_state(task_id, new_state, now_text=None):
 def cmd_flow(task_id, from_dept, to_dept, remark):
     """添加流转记录（原子操作）"""
     clean_remark = _sanitize_remark(remark)
+    from_dept = _canonical_label(from_dept)
+    to_dept = _canonical_label(to_dept)
     def modifier(tasks):
         t = find_task(tasks, task_id)
         if not t:
@@ -288,7 +337,7 @@ def cmd_done(task_id, output_path='', summary=''):
         t['now'] = summary or '任务已完成'
         t.setdefault('flow_log', []).append({
             "at": now_iso(), "from": t.get('org', '执行部门'),
-            "to": "皇上", "remark": f"✅ 完成：{summary or '任务已完成'}"
+            "to": "主人", "remark": f"✅ 完成：{summary or '任务已完成'}"
         })
         t['updatedAt'] = now_iso()
         return tasks

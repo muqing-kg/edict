@@ -17,9 +17,9 @@ def main():
         )
         page = ctx.new_page()
 
-        # ── Clear ceremony localStorage so it doesn't show on every load
+        # ── Clear boot_sequence localStorage so it doesn't show on every load
         page.goto(URL)
-        page.evaluate("localStorage.setItem('openclaw_court_date', new Date().toISOString().substring(0,10))")
+        page.evaluate("localStorage.setItem('edict_boot_sequence_date', new Date().toISOString().substring(0,10))")
         page.reload()
         page.wait_for_load_state('networkidle')
         page.wait_for_timeout(2000)
@@ -28,7 +28,7 @@ def main():
         print('📋 01 kanban...')
         page.screenshot(path=os.path.join(SHOTS, '01-kanban-main.png'), full_page=False)
 
-        # 2. Monitor (省部调度)
+        # 2. Monitor (节点调度)
         print('🔭 02 monitor...')
         page.click('[data-tab="monitor"]')
         page.wait_for_timeout(800)
@@ -61,11 +61,11 @@ def main():
         page.wait_for_timeout(1000)
         page.screenshot(path=os.path.join(SHOTS, '05-skills-config.png'), full_page=False)
 
-        # 6. Officials overview
-        print('👥 06 officials...')
-        page.click('[data-tab="officials"]')
+        # 6. Nodes overview
+        print('👥 06 nodes...')
+        page.click('[data-tab="nodes"]')
         page.wait_for_timeout(1000)
-        page.screenshot(path=os.path.join(SHOTS, '06-official-overview.png'), full_page=False)
+        page.screenshot(path=os.path.join(SHOTS, '06-node-overview.png'), full_page=False)
 
         # 7. Sessions
         print('💬 07 sessions...')
@@ -73,11 +73,11 @@ def main():
         page.wait_for_timeout(800)
         page.screenshot(path=os.path.join(SHOTS, '07-sessions.png'), full_page=False)
 
-        # 8. Memorials
-        print('📜 08 memorials...')
-        page.click('[data-tab="memorials"]')
+        # 8. Archives
+        print('📜 08 archives...')
+        page.click('[data-tab="archives"]')
         page.wait_for_timeout(800)
-        page.screenshot(path=os.path.join(SHOTS, '08-memorials.png'), full_page=False)
+        page.screenshot(path=os.path.join(SHOTS, '08-archives.png'), full_page=False)
 
         # 9. Templates
         print('📜 09 templates...')
@@ -91,12 +91,12 @@ def main():
         page.wait_for_timeout(1000)
         page.screenshot(path=os.path.join(SHOTS, '10-morning-briefing.png'), full_page=False)
 
-        # 11. Ceremony - clear date then reload
-        print('🎬 11 ceremony...')
-        page.evaluate("localStorage.removeItem('openclaw_court_date')")
+        # 11. Boot Sequence - clear date then reload
+        print('🎬 11 boot_sequence...')
+        page.evaluate("localStorage.removeItem('edict_boot_sequence_date')")
         page.reload()
         page.wait_for_timeout(2500)
-        page.screenshot(path=os.path.join(SHOTS, '11-ceremony.png'), full_page=False)
+        page.screenshot(path=os.path.join(SHOTS, '11-boot-sequence.png'), full_page=False)
 
         browser.close()
     print('✅ All screenshots saved to', SHOTS)

@@ -1,8 +1,8 @@
 version: '3.8'
 
 services:
-  sansheng-demo:
-    image: cft0808/sansheng-demo:latest
+  edict-demo:
+    image: cft0808/edict-demo:latest
     platform: linux/amd64
     ports:
       - "7891:7891"

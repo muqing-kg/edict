@@ -71,7 +71,7 @@ async def migration_check():
         "tasks_source": (data_dir / "tasks_source.json").exists(),
         "live_status": (data_dir / "live_status.json").exists(),
         "agent_config": (data_dir / "agent_config.json").exists(),
-        "officials_stats": (data_dir / "officials_stats.json").exists(),
+        "nodes_stats": (data_dir / "nodes_stats.json").exists(),
     }
     return {"data_dir": str(data_dir), "files": files}
 

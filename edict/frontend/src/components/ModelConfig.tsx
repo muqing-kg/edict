@@ -54,7 +54,7 @@ export default function ModelConfig() {
   }, [agentConfig]);
 
   if (!agentConfig?.agents) {
-    return <div className="empty" style={{ gridColumn: '1/-1' }}>⚠️ 请先启动本地服务器</div>;
+    return <div className="empty" style={{ gridColumn: '1/-1' }}>⚠️ 请先启动主链路</div>;
   }
 
   const models = agentConfig.knownModels?.length
@@ -73,18 +73,18 @@ export default function ModelConfig() {
   const applyModel = async (agentId: string) => {
     const model = selMap[agentId];
     if (!model) return;
-    setStatusMap((p) => ({ ...p, [agentId]: { cls: 'pending', text: '⟳ 提交中…' } }));
+    setStatusMap((p) => ({ ...p, [agentId]: { cls: 'pending', text: '⟳ 写入中…' } }));
     try {
       const r = await api.setModel(agentId, model);
       if (r.ok) {
-        setStatusMap((p) => ({ ...p, [agentId]: { cls: 'ok', text: '✅ 已提交，Gateway 重启中（约5秒）' } }));
-        toast(agentId + ' 模型已更改', 'ok');
+        setStatusMap((p) => ({ ...p, [agentId]: { cls: 'ok', text: '✅ 已写入，Gateway 重启中（约5秒）' } }));
+        toast(agentId + ' 模型核心已切换', 'ok');
         setTimeout(() => loadAgentConfig(), 5500);
       } else {
         setStatusMap((p) => ({ ...p, [agentId]: { cls: 'err', text: '❌ ' + (r.error || '错误') } }));
       }
     } catch {
-      setStatusMap((p) => ({ ...p, [agentId]: { cls: 'err', text: '❌ 无法连接服务器' } }));
+      setStatusMap((p) => ({ ...p, [agentId]: { cls: 'err', text: '❌ 主链路不可达' } }));
     }
   };
 
@@ -108,7 +108,7 @@ export default function ModelConfig() {
                 </div>
               </div>
               <div className="mc-cur">
-                当前: <b>{ag.model}</b>
+                当前核心: <b>{ag.model}</b>
               </div>
               <select className="msel" value={sel} onChange={(e) => handleSelect(ag.id, e.target.value)}>
                 {models.map((m) => (
@@ -119,10 +119,10 @@ export default function ModelConfig() {
               </select>
               <div className="mc-btns">
                 <button className="btn btn-p" disabled={!changed} onClick={() => applyModel(ag.id)}>
-                  应用
+                  写入
                 </button>
                 <button className="btn btn-g" onClick={() => resetMC(ag.id)}>
-                  重置
+                  复位
                 </button>
               </div>
               {st && <div className={`mc-st ${st.cls}`}>{st.text}</div>}
@@ -133,7 +133,7 @@ export default function ModelConfig() {
 
       {/* Dispatch Channel 配置 */}
       <div style={{ marginTop: 24, marginBottom: 8 }}>
-        <div className="sec-title">派发渠道</div>
+        <div className="sec-title">回传信道</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
           <select className="msel" value={channelSel} onChange={(e) => setChannelSel(e.target.value)}
             style={{ maxWidth: 220 }}>
@@ -145,22 +145,22 @@ export default function ModelConfig() {
             onClick={async () => {
               try {
                 const r = await api.setDispatchChannel(channelSel);
-                if (r.ok) { setChannelStatus('✅ 已保存'); toast('派发渠道已切换', 'ok'); loadAgentConfig(); }
+                if (r.ok) { setChannelStatus('✅ 已写入'); toast('回传信道已切换', 'ok'); loadAgentConfig(); }
                 else setChannelStatus('❌ ' + (r.error || '失败'));
-              } catch { setChannelStatus('❌ 无法连接'); }
+              } catch { setChannelStatus('❌ 主链路不可达'); }
               setTimeout(() => setChannelStatus(''), 3000);
-            }}>应用</button>
-          {channelStatus && <span style={{ fontSize: 12, color: channelStatus.startsWith('✅') ? 'var(--success)' : 'var(--danger)' }}>{channelStatus}</span>}
+            }}>写入</button>
+          {channelStatus && <span style={{ fontSize: 12, color: channelStatus.startsWith('✅') ? 'var(--ok)' : 'var(--danger)' }}>{channelStatus}</span>}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)' }}>自动派发时使用的 OpenClaw 通知渠道（需已在 openclaw.json 中配置对应 channel）</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)' }}>自动派发时使用的 OpenClaw 回传信道（需已在 openclaw.json 中配置对应 channel）</div>
       </div>
 
       {/* Change Log */}
       <div style={{ marginTop: 24 }}>
-        <div className="sec-title">变更日志</div>
+        <div className="sec-title">矩阵变更记录</div>
         <div className="cl-list">
           {!changeLog?.length ? (
-            <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>暂无变更</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>暂无矩阵变更</div>
           ) : (
             [...changeLog]
               .reverse()
@@ -182,7 +182,7 @@ export default function ModelConfig() {
                           marginLeft: 4,
                         }}
                       >
-                        ⚠ 已回滚
+                        ⚠ 已回退
                       </span>
                     )}
                   </span>

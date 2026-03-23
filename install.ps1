@@ -8,6 +8,9 @@ $ErrorActionPreference = "Stop"
 $REPO_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OC_HOME = Join-Path $env:USERPROFILE ".openclaw"
 $OC_CFG = Join-Path $OC_HOME "openclaw.json"
+$STATE_FILE = Join-Path $OC_HOME "jianzai-install-state.json"
+$MANAGED_AGENTS = @("main","xingshu","lengjing","zhongji","yuanliu","wenshu","weikong","tanzhen","jiwu","xulie","tianyan")
+$NON_MAIN_AGENTS = @("xingshu","lengjing","zhongji","yuanliu","wenshu","weikong","tanzhen","jiwu","xulie","tianyan")
 
 function Write-Banner {
     Write-Host ""
@@ -22,6 +25,68 @@ function Log   { param($msg) Write-Host "✅ $msg" -ForegroundColor Green }
 function Warn  { param($msg) Write-Host "⚠️  $msg" -ForegroundColor Yellow }
 function Error { param($msg) Write-Host "❌ $msg" -ForegroundColor Red }
 function Info  { param($msg) Write-Host "ℹ️  $msg" -ForegroundColor Blue }
+
+function Get-WorkspacePath {
+    param([string]$AgentId)
+
+    if ($AgentId -ne "main") {
+        return (Join-Path $OC_HOME "workspace-$AgentId")
+    }
+
+    $pyScript = @"
+import os
+import pathlib
+import sys
+
+repo_dir = pathlib.Path(os.environ['REPO_DIR'])
+sys.path.insert(0, str(repo_dir / 'scripts'))
+from utils import resolve_workspace
+
+print(resolve_workspace('main'))
+"@
+    return (& $global:PYTHON -c $pyScript).Trim()
+}
+
+function Write-InstallState {
+    $pairs = @()
+    foreach ($agent in $MANAGED_AGENTS) {
+        $pairs += "$agent=$(Get-WorkspacePath $agent)"
+    }
+    $pairsText = [string]::Join("`n", $pairs)
+    $agentsCsv = [string]::Join(",", $MANAGED_AGENTS)
+    $backupDir = $script:BACKUP_DIR
+    $pyScript = @"
+import datetime
+import json
+import os
+import pathlib
+
+workspaces = {}
+for line in os.environ.get('WORKSPACE_PAIRS', '').splitlines():
+    if not line.strip():
+        continue
+    agent, workspace = line.split('=', 1)
+    workspaces[agent] = workspace
+
+state = {
+    'installTag': 'jianzai-runtime',
+    'installedAt': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    'backupDir': os.environ['BACKUP_DIR'],
+    'managedAgents': [x for x in os.environ.get('MANAGED_AGENTS_CSV', '').split(',') if x],
+    'mainWorkspace': workspaces.get('main', ''),
+    'workspaces': workspaces,
+}
+state_path = pathlib.Path(os.environ['STATE_FILE'])
+state_path.parent.mkdir(parents=True, exist_ok=True)
+state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+print(state_path)
+"@
+    $env:WORKSPACE_PAIRS = $pairsText
+    $env:MANAGED_AGENTS_CSV = $agentsCsv
+    $env:BACKUP_DIR = $backupDir
+    $env:STATE_FILE = $STATE_FILE
+    & $global:PYTHON -c $pyScript | Out-Null
+}
 
 function Get-LocalSoulOverridePath {
     param([string]$WorkspacePath)
@@ -90,32 +155,41 @@ function Check-Deps {
 
 # ── Step 0.5: 备份已有 Agent 数据 ──
 function Backup-Existing {
-    $hasExisting = Get-ChildItem -Path $OC_HOME -Directory -Filter "workspace-*" -ErrorAction SilentlyContinue
-    if ($hasExisting) {
-        Info "检测到已有 Agent Workspace，自动备份中..."
-        $ts = Get-Date -Format "yyyyMMdd-HHmmss"
-        $backupDir = Join-Path $OC_HOME "backups\pre-install-$ts"
-        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    Info "创建安装前备份..."
+    $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+    $script:BACKUP_DIR = Join-Path $OC_HOME "backups\jianzai-install-$ts"
+    New-Item -ItemType Directory -Path (Join-Path $script:BACKUP_DIR "workspaces") -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $script:BACKUP_DIR "agents") -Force | Out-Null
 
-        Get-ChildItem -Path $OC_HOME -Directory -Filter "workspace-*" | ForEach-Object {
-            Copy-Item -Path $_.FullName -Destination (Join-Path $backupDir $_.Name) -Recurse
-        }
-
-        if (Test-Path $OC_CFG) {
-            Copy-Item $OC_CFG (Join-Path $backupDir "openclaw.json")
-        }
-        Log "已备份到: $backupDir"
+    if (Test-Path $OC_CFG) {
+        Copy-Item $OC_CFG (Join-Path $script:BACKUP_DIR "openclaw.json")
     }
+
+    foreach ($agent in $MANAGED_AGENTS) {
+        $ws = Get-WorkspacePath $agent
+        if (Test-Path $ws) {
+            Copy-Item -Path $ws -Destination (Join-Path $script:BACKUP_DIR "workspaces\$agent") -Recurse
+        }
+
+        $agentDir = Join-Path $OC_HOME "agents\$agent"
+        if (Test-Path $agentDir) {
+            Copy-Item -Path $agentDir -Destination (Join-Path $script:BACKUP_DIR "agents\$agent") -Recurse
+        }
+    }
+
+    Log "安装前备份完成: $script:BACKUP_DIR"
 }
 
 # ── Step 1: 创建 Workspace ──
 function Create-Workspaces {
     Info "创建 Agent Workspace..."
 
-    $agents = @("taizi","zhongshu","menxia","shangshu","hubu","libu","bingbu","xingbu","gongbu","libu_hr","zaochao")
-    foreach ($agent in $agents) {
-        $ws = Join-Path $OC_HOME "workspace-$agent"
-        New-Item -ItemType Directory -Path (Join-Path $ws "skills") -Force | Out-Null
+    foreach ($agent in $MANAGED_AGENTS) {
+        $ws = Get-WorkspacePath $agent
+        New-Item -ItemType Directory -Path $ws -Force | Out-Null
+        if ($agent -ne "main") {
+            New-Item -ItemType Directory -Path (Join-Path $ws "skills") -Force | Out-Null
+        }
 
         $soulSrc = Join-Path $REPO_DIR "agents\$agent\SOUL.md"
         $soulDst = Join-Path $ws "SOUL.md"
@@ -127,11 +201,11 @@ function Create-Workspaces {
                 Warn "已备份旧 SOUL.md → $soulDst.bak.$ts"
             } elseif (Test-Path $soulCompatDst) {
                 Copy-Item $soulCompatDst "$soulCompatDst.bak.$ts"
-                Warn "检测到旧版 soul.md，已备份 → $soulCompatDst.bak.$ts"
+                Warn "检测到现有 soul.md，已备份 → $soulCompatDst.bak.$ts"
             }
             $content = Get-ComposedSoulContent -BaseSoulPath $soulSrc -WorkspacePath $ws
             Set-Content -Path $soulDst -Value $content -Encoding UTF8
-            # 兼容镜像：避免旧逻辑读取 soul.md 时丢失更新
+            # 同步写入小写镜像，保证运行态入口一致
             Set-Content -Path $soulCompatDst -Value $content -Encoding UTF8
             if (Get-LocalSoulOverridePath -WorkspacePath $ws) {
                 Info "检测到本机覆盖层，将与仓库基线合成输出: $ws"
@@ -139,7 +213,10 @@ function Create-Workspaces {
         }
         Log "Workspace 已创建: $ws"
 
-        # AGENTS.md
+        if ($agent -eq "main") {
+            continue
+        }
+
         $agentsMd = @"
 # AGENTS.md · 工作协议
 
@@ -157,48 +234,74 @@ function Register-Agents {
     Info "注册太空舰载系统 Agents..."
 
     $ts = Get-Date -Format "yyyyMMdd-HHmmss"
-    Copy-Item $OC_CFG "$OC_CFG.bak.sansheng-$ts"
+    Copy-Item $OC_CFG "$OC_CFG.bak.jianzai-$ts"
     Log "已备份配置: $OC_CFG.bak.*"
 
     $pyScript = @"
-import json, pathlib, sys, os
+import json, pathlib, os
 
 cfg_path = pathlib.Path(os.environ['USERPROFILE']) / '.openclaw' / 'openclaw.json'
 cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
 
-AGENTS = [
-    {"id": "taizi",    "subagents": {"allowAgents": ["zhongshu"]}},
-    {"id": "zhongshu", "subagents": {"allowAgents": ["menxia", "shangshu"]}},
-    {"id": "menxia",   "subagents": {"allowAgents": ["shangshu", "zhongshu"]}},
-    {"id": "shangshu", "subagents": {"allowAgents": ["zhongshu", "menxia", "hubu", "libu", "bingbu", "xingbu", "gongbu", "libu_hr"]}},
-    {"id": "hubu",     "subagents": {"allowAgents": ["shangshu"]}},
-    {"id": "libu",     "subagents": {"allowAgents": ["shangshu"]}},
-    {"id": "bingbu",   "subagents": {"allowAgents": ["shangshu"]}},
-    {"id": "xingbu",   "subagents": {"allowAgents": ["shangshu"]}},
-    {"id": "gongbu",   "subagents": {"allowAgents": ["shangshu"]}},
-    {"id": "libu_hr",  "subagents": {"allowAgents": ["shangshu"]}},
-    {"id": "zaochao",  "subagents": {"allowAgents": []}},
+canonical_agents = [
+    {'id': 'main', 'subagents': {'allowAgents': ['xingshu']}},
+    {'id': 'xingshu', 'subagents': {'allowAgents': ['lengjing', 'zhongji']}},
+    {'id': 'lengjing', 'subagents': {'allowAgents': ['zhongji', 'xingshu']}},
+    {'id': 'zhongji', 'subagents': {'allowAgents': ['xingshu', 'lengjing', 'yuanliu', 'wenshu', 'weikong', 'tanzhen', 'jiwu', 'xulie']}},
+    {'id': 'yuanliu', 'subagents': {'allowAgents': ['zhongji']}},
+    {'id': 'wenshu', 'subagents': {'allowAgents': ['zhongji']}},
+    {'id': 'weikong', 'subagents': {'allowAgents': ['zhongji']}},
+    {'id': 'tanzhen', 'subagents': {'allowAgents': ['zhongji']}},
+    {'id': 'jiwu', 'subagents': {'allowAgents': ['zhongji']}},
+    {'id': 'xulie', 'subagents': {'allowAgents': ['zhongji']}},
+    {'id': 'tianyan', 'subagents': {'allowAgents': []}},
 ]
 
+def resolve_workspace(agent_id, agents_list):
+    for item in agents_list:
+        if item.get('id') == agent_id and item.get('workspace'):
+            return item['workspace']
+    home = pathlib.Path(os.environ['USERPROFILE']) / '.openclaw'
+    if agent_id == 'main':
+        return str(home / 'workspace')
+    return str(home / f'workspace-{agent_id}')
+
 agents_cfg = cfg.setdefault('agents', {})
-agents_list = agents_cfg.get('list', [])
-existing_ids = {a['id'] for a in agents_list}
+agents_list = list(agents_cfg.get('list', []))
+existing = {a['id']: a for a in agents_list if a.get('id')}
 
 added = 0
-for ag in AGENTS:
+updated = 0
+for ag in canonical_agents:
     ag_id = ag['id']
-    ws = str(pathlib.Path(os.environ['USERPROFILE']) / f'.openclaw/workspace-{ag_id}')
-    if ag_id not in existing_ids:
-        entry = {'id': ag_id, 'workspace': ws, **{k:v for k,v in ag.items() if k!='id'}}
+    desired = {
+        'id': ag_id,
+        'workspace': resolve_workspace(ag_id, agents_list),
+        **{k:v for k,v in ag.items() if k!='id'}
+    }
+    if ag_id in existing:
+        current = existing[ag_id]
+        changed = False
+        if current.get('subagents', {}) != desired['subagents']:
+            current['subagents'] = desired['subagents']
+            changed = True
+        if not current.get('workspace'):
+            current['workspace'] = desired['workspace']
+            changed = True
+        if changed:
+            updated += 1
+            print(f'  ~ updated: {ag_id}')
+        else:
+            print(f'  ~ exists: {ag_id}')
+    else:
+        entry = desired
         agents_list.append(entry)
+        existing[ag_id] = entry
         added += 1
         print(f'  + added: {ag_id}')
-    else:
-        print(f'  ~ exists: {ag_id} (skipped)')
 
 agents_cfg['list'] = agents_list
 
-# Fix #142: clean invalid binding pattern
 bindings = cfg.get('bindings', [])
 for b in bindings:
     match = b.get('match', {})
@@ -207,7 +310,7 @@ for b in bindings:
         print(f'  cleaned invalid pattern from binding: {b.get("agentId", "?")}')
 
 cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
-print(f'Done: {added} agents added')
+print(f'Done: {added} agents added, {updated} agents updated')
 "@
     & $global:PYTHON -c $pyScript
     Log "Agents 注册完成"
@@ -231,9 +334,8 @@ function Init-Data {
 function Link-Resources {
     Info "创建 data/scripts 目录连接..."
     $linked = 0
-    $agents = @("taizi","zhongshu","menxia","shangshu","hubu","libu","bingbu","xingbu","gongbu","libu_hr","zaochao")
-    foreach ($agent in $agents) {
-        $ws = Join-Path $OC_HOME "workspace-$agent"
+    foreach ($agent in $NON_MAIN_AGENTS) {
+        $ws = Get-WorkspacePath $agent
         New-Item -ItemType Directory -Path $ws -Force | Out-Null
 
         # data 目录
@@ -306,7 +408,7 @@ function First-Sync {
     Push-Location $REPO_DIR
     $env:REPO_DIR = $REPO_DIR
     try { & $global:PYTHON scripts/sync_agent_config.py } catch { Warn "sync_agent_config 有警告" }
-    try { & $global:PYTHON scripts/sync_officials_stats.py } catch { Warn "sync_officials_stats 有警告" }
+    try { & $global:PYTHON scripts/sync_nodes_stats.py } catch { Warn "sync_nodes_stats 有警告" }
     try { & $global:PYTHON scripts/refresh_live_data.py } catch { Warn "refresh_live_data 有警告" }
     Pop-Location
     Log "首次同步完成"
@@ -332,6 +434,7 @@ Register-Agents
 Init-Data
 Link-Resources
 Setup-Visibility
+Write-InstallState
 Build-Frontend
 First-Sync
 Restart-Gateway
@@ -343,11 +446,12 @@ Write-Host "╚═════════════════════�
 Write-Host ""
 Write-Host "下一步："
 Write-Host "  1. 配置 API Key（如尚未配置）:"
-Write-Host "     openclaw agents add taizi     # 按提示输入 Anthropic API Key"
+Write-Host "     openclaw agents add main     # 按提示输入 Anthropic API Key"
 Write-Host "     .\install.ps1                 # 重新运行以同步到所有 Agent"
 Write-Host "  2. 启动数据刷新循环:  Start-Process python3 -ArgumentList 'scripts/run_loop.sh'"
 Write-Host "  3. 启动看板服务器:    python3 dashboard/server.py"
 Write-Host "  4. 打开看板:          http://127.0.0.1:7891"
+Write-Host "  5. 如需卸载:          .\uninstall.ps1"
 Write-Host ""
 Warn "首次安装必须配置 API Key，否则 Agent 会报错"
 Info "文档: docs/getting-started.md"

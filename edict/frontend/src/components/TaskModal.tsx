@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useStore, getPipeStatus, deptColor, stateLabel, STATE_LABEL } from '../store';
+import { useStore, getPipeStatus, deptColor, stateLabel, STATE_LABEL, displayName, displayText } from '../store';
 import { api } from '../api';
 import type {
   Task,
@@ -11,26 +11,26 @@ import type {
 } from '../api';
 
 const AGENT_LABELS: Record<string, string> = {
-  main: '太子',
-  zhongshu: '中书省',
-  menxia: '门下省',
-  shangshu: '尚书省',
-  libu: '礼部',
-  hubu: '户部',
-  bingbu: '兵部',
-  xingbu: '刑部',
-  gongbu: '工部',
-  libu_hr: '吏部',
-  zaochao: '钦天监',
+  main: '云霄',
+  xingshu: '星枢',
+  lengjing: '棱镜',
+  zhongji: '中继',
+  wenshu: '文枢',
+  yuanliu: '源流',
+  weikong: '维控',
+  tanzhen: '探针',
+  jiwu: '机务',
+  xulie: '序列',
+  tianyan: '天眼',
 };
 
 const NEXT_LABELS: Record<string, string> = {
-  Taizi: '中书省起草',
-  Zhongshu: '门下省审议',
-  Menxia: '尚书省派发',
-  Assigned: '开始执行',
-  Doing: '进入审查',
-  Review: '完成',
+  Yunxiao: '星枢建模',
+  Xingshu: '棱镜校验',
+  Lengjing: '中继派遣',
+  Assigned: '执行链路接入',
+  Doing: '进入汇流',
+  Review: '全链完成',
 };
 
 function fmtStalled(sec: number): string {
@@ -130,19 +130,19 @@ export default function TaskModal() {
     try {
       const r = await api.taskAction(task.id, action, reason);
       if (r.ok) {
-        toast(r.message || '操作成功', 'ok');
+        toast(r.message || '链路操作已写入', 'ok');
         loadAll();
         close();
       } else {
-        toast(r.error || '操作失败', 'err');
+        toast(r.error || '链路操作失败', 'err');
       }
     } catch {
-      toast('服务器连接失败', 'err');
+      toast('主链路连接失败', 'err');
     }
   };
 
   const doReview = async (action: string) => {
-    const labels: Record<string, string> = { approve: '准奏', reject: '封驳' };
+    const labels: Record<string, string> = { approve: '通过校验', reject: '退回重算' };
     const comment = prompt(`${labels[action]} ${task.id}\n\n请输入批注（可留空）：`);
     if (comment === null) return;
     try {
@@ -152,16 +152,16 @@ export default function TaskModal() {
         loadAll();
         close();
       } else {
-        toast(r.error || '操作失败', 'err');
+        toast(r.error || '链路操作失败', 'err');
       }
     } catch {
-      toast('服务器连接失败', 'err');
+      toast('主链路连接失败', 'err');
     }
   };
 
   const doAdvance = async () => {
-    const next = NEXT_LABELS[task.state] || '下一步';
-    const comment = prompt(`⏩ 手动推进 ${task.id}\n当前: ${task.state} → 下一步: ${next}\n\n请输入说明（可留空）：`);
+    const next = NEXT_LABELS[task.state] || '下一航段';
+    const comment = prompt(`⏩ 手动推进 ${task.id}\n当前航段: ${task.state} → 下一航段: ${next}\n\n请输入说明（可留空）：`);
     if (comment === null) return;
     try {
       const r = await api.advanceState(task.id, comment || '');
@@ -173,7 +173,7 @@ export default function TaskModal() {
         toast(r.error || '推进失败', 'err');
       }
     } catch {
-      toast('服务器连接失败', 'err');
+      toast('主链路连接失败', 'err');
     }
   };
 
@@ -181,15 +181,15 @@ export default function TaskModal() {
     if (action === 'scan') {
       try {
         const r = await api.schedulerScan(180);
-        if (r.ok) toast(`🔍 扫描完成：${r.count || 0} 个动作`, 'ok');
+        if (r.ok) toast(`🔍 扫描完成：${r.count || 0} 条调度回波`, 'ok');
         else toast(r.error || '扫描失败', 'err');
         fetchSched();
       } catch {
-        toast('服务器连接失败', 'err');
+        toast('主链路连接失败', 'err');
       }
       return;
     }
-    const labels: Record<string, string> = { retry: '重试', escalate: '升级', rollback: '回滚' };
+    const labels: Record<string, string> = { retry: '重发', escalate: '升级', rollback: '回退' };
     const reason = prompt(`请输入${labels[action]}原因（可留空）：`);
     if (reason === null) return;
     const handlers: Record<string, (id: string, r: string) => Promise<{ ok: boolean; message?: string; error?: string }>> = {
@@ -199,24 +199,24 @@ export default function TaskModal() {
     };
     try {
       const r = await handlers[action](task.id, reason);
-      if (r.ok) toast(r.message || '操作成功', 'ok');
-      else toast(r.error || '操作失败', 'err');
+      if (r.ok) toast(r.message || '链路操作已写入', 'ok');
+      else toast(r.error || '链路操作失败', 'err');
       fetchSched();
       loadAll();
     } catch {
-      toast('服务器连接失败', 'err');
+      toast('主链路连接失败', 'err');
     }
   };
 
   const handleStop = () => {
-    const reason = prompt('请输入叫停原因（可留空）：');
+    const reason = prompt('请输入冻结原因（可留空）：');
     if (reason === null) return;
     doTaskAction('stop', reason);
   };
 
   const handleCancel = () => {
-    if (!confirm(`确定要取消 ${task.id} 吗？`)) return;
-    const reason = prompt('请输入取消原因（可留空）：');
+    if (!confirm(`确定要中止 ${task.id} 吗？`)) return;
+    const reason = prompt('请输入中止原因（可留空）：');
     if (reason === null) return;
     doTaskAction('cancel', reason);
   };
@@ -231,7 +231,7 @@ export default function TaskModal() {
         <button className="modal-close" onClick={close}>✕</button>
         <div className="modal-body">
           <div className="modal-id">{task.id}</div>
-          <div className="modal-title">{task.title || '(无标题)'}</div>
+          <div className="modal-title">{displayText(task.title || '(无标题)')}</div>
 
           {/* Current Stage Banner */}
           {activeStage && (
@@ -239,7 +239,7 @@ export default function TaskModal() {
               <div className="cs-icon">{activeStage.icon}</div>
               <div className="cs-info">
                 <div className="cs-dept" style={{ color: deptColor(activeStage.dept) }}>{activeStage.dept}</div>
-                <div className="cs-action">当前阶段：{activeStage.action}</div>
+                <div className="cs-action">当前航段：{activeStage.action}</div>
               </div>
               <span className={`hb ${hb.status} cs-hb`}>{hb.label}</span>
             </div>
@@ -268,50 +268,50 @@ export default function TaskModal() {
           <div className="task-actions">
             {canStop && (
               <>
-                <button className="btn-action btn-stop" onClick={handleStop}>⏸ 叫停任务</button>
-                <button className="btn-action btn-cancel" onClick={handleCancel}>🚫 取消任务</button>
+                <button className="btn-action btn-stop" onClick={handleStop}>⏸ 冻结任务</button>
+                <button className="btn-action btn-cancel" onClick={handleCancel}>🚫 中止任务</button>
               </>
             )}
             {canResume && (
-              <button className="btn-action btn-resume" onClick={() => doTaskAction('resume', '恢复执行')}>▶️ 恢复执行</button>
+              <button className="btn-action btn-resume" onClick={() => doTaskAction('resume', '解冻执行')}>▶️ 解冻执行</button>
             )}
-            {['Review', 'Menxia'].includes(task.state) && (
+            {['Review', 'Lengjing'].includes(task.state) && (
               <>
-                <button className="btn-action" style={{ background: '#2ecc8a22', color: '#2ecc8a', border: '1px solid #2ecc8a44' }} onClick={() => doReview('approve')}>✅ 准奏</button>
-                <button className="btn-action" style={{ background: '#ff527022', color: '#ff5270', border: '1px solid #ff527044' }} onClick={() => doReview('reject')}>🚫 封驳</button>
+                <button className="btn-action" style={{ background: '#2ecc8a22', color: '#2ecc8a', border: '1px solid #2ecc8a44' }} onClick={() => doReview('approve')}>✅ 通过校验</button>
+                <button className="btn-action" style={{ background: '#ff527022', color: '#ff5270', border: '1px solid #ff527044' }} onClick={() => doReview('reject')}>🚫 退回重算</button>
               </>
             )}
-            {['Pending', 'Taizi', 'Zhongshu', 'Menxia', 'Assigned', 'Doing', 'Review', 'Next'].includes(task.state) && (
-              <button className="btn-action" style={{ background: '#7c5cfc18', color: '#7c5cfc', border: '1px solid #7c5cfc44' }} onClick={doAdvance}>⏩ 推进到下一步</button>
+            {['Pending', 'Yunxiao', 'Xingshu', 'Lengjing', 'Assigned', 'Doing', 'Review', 'Next'].includes(task.state) && (
+              <button className="btn-action" style={{ background: '#7c5cfc18', color: '#7c5cfc', border: '1px solid #7c5cfc44' }} onClick={doAdvance}>⏩ 推进至下一航段</button>
             )}
           </div>
 
           {/* Scheduler Section */}
           <div className="sched-section">
             <div className="sched-head">
-              <span className="sched-title">🧭 太子调度</span>
+              <span className="sched-title">🧭 云霄调度核心</span>
               <span className="sched-status">
-                {sched ? `${sched.enabled === false ? '已禁用' : '运行中'} · 阈值 ${sched.stallThresholdSec || 180}s` : '加载中...'}
+                {sched ? `${sched.enabled === false ? '已离线' : '在线'} · 阈值 ${sched.stallThresholdSec || 180}s` : '遥测加载中...'}
               </span>
             </div>
             <div className="sched-grid">
-              <div className="sched-kpi"><div className="k">停滞时长</div><div className="v">{fmtStalled(stalledSec)}</div></div>
-              <div className="sched-kpi"><div className="k">重试次数</div><div className="v">{sched?.retryCount || 0}</div></div>
-              <div className="sched-kpi"><div className="k">升级级别</div><div className="v">{!sched?.escalationLevel ? '无' : sched.escalationLevel === 1 ? '门下省' : '尚书省'}</div></div>
-              <div className="sched-kpi"><div className="k">派发状态</div><div className="v">{sched?.lastDispatchStatus || 'idle'}</div></div>
+              <div className="sched-kpi"><div className="k">链路滞留</div><div className="v">{fmtStalled(stalledSec)}</div></div>
+              <div className="sched-kpi"><div className="k">重试回波</div><div className="v">{sched?.retryCount || 0}</div></div>
+              <div className="sched-kpi"><div className="k">升级层级</div><div className="v">{!sched?.escalationLevel ? '无' : sched.escalationLevel === 1 ? '棱镜' : '中继'}</div></div>
+              <div className="sched-kpi"><div className="k">派发链路</div><div className="v">{sched?.lastDispatchStatus || 'idle'}</div></div>
             </div>
             {sched && (
               <div className="sched-line">
-                {sched.lastProgressAt && <span>最近进展 {(sched.lastProgressAt || '').replace('T', ' ').substring(0, 19)}</span>}
-                {sched.lastDispatchAt && <span>最近派发 {(sched.lastDispatchAt || '').replace('T', ' ').substring(0, 19)}</span>}
-                <span>自动回滚 {sched.autoRollback === false ? '关闭' : '开启'}</span>
-                {sched.lastDispatchAgent && <span>目标 {sched.lastDispatchAgent}</span>}
+                {sched.lastProgressAt && <span>最近回波 {(sched.lastProgressAt || '').replace('T', ' ').substring(0, 19)}</span>}
+                {sched.lastDispatchAt && <span>最近派遣 {(sched.lastDispatchAt || '').replace('T', ' ').substring(0, 19)}</span>}
+                <span>自动回退 {sched.autoRollback === false ? '关闭' : '开启'}</span>
+                {sched.lastDispatchAgent && <span>目标节点 {AGENT_LABELS[sched.lastDispatchAgent] || displayName(sched.lastDispatchAgent)}</span>}
               </div>
             )}
             <div className="sched-actions">
-              <button className="sched-btn" onClick={() => doSchedAction('retry')}>🔁 重试派发</button>
+              <button className="sched-btn" onClick={() => doSchedAction('retry')}>🔁 重发派遣</button>
               <button className="sched-btn warn" onClick={() => doSchedAction('escalate')}>📣 升级协调</button>
-              <button className="sched-btn danger" onClick={() => doSchedAction('rollback')}>↩️ 回滚稳定点</button>
+              <button className="sched-btn danger" onClick={() => doSchedAction('rollback')}>↩️ 回退稳定点</button>
               <button className="sched-btn" onClick={() => doSchedAction('scan')}>🔍 立即扫描</button>
             </div>
           </div>
@@ -328,29 +328,29 @@ export default function TaskModal() {
                 <div className="mr-label">状态</div>
                 <div className="mr-val">
                   <span className={`tag st-${task.state}`}>{stateLabel(task)}</span>
-                  {(task.review_round || 0) > 0 && <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>共磋商 {task.review_round} 轮</span>}
+                  {(task.review_round || 0) > 0 && <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>共校验 {task.review_round} 轮</span>}
                 </div>
               </div>
               <div className="m-row">
-                <div className="mr-label">执行部门</div>
-                <div className="mr-val"><span className={`tag dt-${(task.org || '').replace(/\s/g, '')}`}>{task.org || '—'}</span></div>
+                <div className="mr-label">目标节点</div>
+                <div className="mr-val"><span className={`tag dt-${(task.org || '').replace(/\s/g, '')}`}>{displayName(task.org || '—')}</span></div>
               </div>
               {task.eta && task.eta !== '-' && (
-                <div className="m-row"><div className="mr-label">预计完成</div><div className="mr-val">{task.eta}</div></div>
+                <div className="m-row"><div className="mr-label">预计出舱</div><div className="mr-val">{task.eta}</div></div>
               )}
               {task.block && task.block !== '无' && task.block !== '-' && (
-                <div className="m-row"><div className="mr-label" style={{ color: 'var(--danger)' }}>阻塞项</div><div className="mr-val" style={{ color: 'var(--danger)' }}>{task.block}</div></div>
+                <div className="m-row"><div className="mr-label" style={{ color: 'var(--danger)' }}>阻塞信号</div><div className="mr-val" style={{ color: 'var(--danger)' }}>{displayText(task.block)}</div></div>
               )}
               {task.now && task.now !== '-' && (
                 <div className="m-row" style={{ gridColumn: '1/-1' }}>
-                  <div className="mr-label">当前进展</div>
-                  <div className="mr-val" style={{ fontWeight: 400, fontSize: 12 }}>{task.now}</div>
+                  <div className="mr-label">当前链路</div>
+                  <div className="mr-val" style={{ fontWeight: 400, fontSize: 12 }}>{displayText(task.now)}</div>
                 </div>
               )}
               {task.ac && (
                 <div className="m-row" style={{ gridColumn: '1/-1' }}>
-                  <div className="mr-label">验收标准</div>
-                  <div className="mr-val" style={{ fontWeight: 400, fontSize: 12 }}>{task.ac}</div>
+                  <div className="mr-label">校验基线</div>
+                  <div className="mr-val" style={{ fontWeight: 400, fontSize: 12 }}>{displayText(task.ac)}</div>
                 </div>
               )}
             </div>
@@ -359,7 +359,7 @@ export default function TaskModal() {
           {/* Flow Log */}
           {flowLog.length > 0 && (
             <div className="m-section">
-              <div className="m-sec-label">流转日志（{flowLog.length} 条）</div>
+              <div className="m-sec-label">链路日志（{flowLog.length} 条）</div>
               <div className="fl-timeline">
                 {flowLog.map((fl, i) => {
                   const col = deptColor(fl.from || '');
@@ -369,11 +369,11 @@ export default function TaskModal() {
                       <div className="fl-dot" style={{ background: col }} />
                       <div className="fl-content">
                         <div className="fl-who">
-                          <span className="from" style={{ color: col }}>{fl.from}</span>
+                          <span className="from" style={{ color: col }}>{displayName(fl.from || '')}</span>
                           <span style={{ color: 'var(--muted)' }}> → </span>
-                          <span className="to" style={{ color: deptColor(fl.to || '') }}>{fl.to}</span>
+                          <span className="to" style={{ color: deptColor(fl.to || '') }}>{displayName(fl.to || '')}</span>
                         </div>
-                        <div className="fl-rem">{fl.remark}</div>
+                        <div className="fl-rem">{displayText(fl.remark || '')}</div>
                       </div>
                     </div>
                   );
@@ -385,7 +385,7 @@ export default function TaskModal() {
           {/* Output */}
           {task.output && task.output !== '-' && task.output !== '' && (
             <div className="m-section">
-              <div className="m-sec-label">产出物</div>
+              <div className="m-sec-label">落地产物</div>
               <code>{task.output}</code>
             </div>
           )}
@@ -403,7 +403,7 @@ function TodoSection({ todos, todoDone, todoTotal }: { todos: TodoItem[]; todoDo
     <div className="todo-section">
       <div className="todo-header">
         <div className="m-sec-label" style={{ marginBottom: 0, border: 'none', padding: 0 }}>
-          子任务清单（{todoDone}/{todoTotal}）
+          子链清单（{todoDone}/{todoTotal}）
         </div>
         <div className="todo-progress">
           <div className="todo-bar">
@@ -415,7 +415,7 @@ function TodoSection({ todos, todoDone, todoTotal }: { todos: TodoItem[]; todoDo
       <div className="todo-list">
         {todos.map((td) => {
           const ico = td.status === 'completed' ? '✅' : td.status === 'in-progress' ? '🔄' : '⬜';
-          const stLabel = td.status === 'completed' ? '已完成' : td.status === 'in-progress' ? '进行中' : '待开始';
+          const stLabel = td.status === 'completed' ? '已完成' : td.status === 'in-progress' ? '推进中' : '待启动';
           const stCls = td.status === 'completed' ? 's-done' : td.status === 'in-progress' ? 's-progress' : 's-notstarted';
           const itemCls = td.status === 'completed' ? 'done' : '';
           return (
@@ -426,7 +426,7 @@ function TodoSection({ todos, todoDone, todoTotal }: { todos: TodoItem[]; todoDo
                 <span className="t-title">{td.title}</span>
                 <span className={`t-status ${stCls}`}>{stLabel}</span>
               </div>
-              {td.detail && <div className="todo-detail">{td.detail}</div>}
+              {td.detail && <div className="todo-detail">{displayText(td.detail)}</div>}
             </div>
           );
         })}
@@ -456,17 +456,27 @@ function LiveActivitySection({
   })();
 
   const agentParts: string[] = [];
-  if (data.agentLabel) agentParts.push(data.agentLabel);
-  if (data.relatedAgents && data.relatedAgents.length > 1) agentParts.push(`${data.relatedAgents.length}个 Agent`);
-  if (data.lastActive) agentParts.push(`最后活跃: ${data.lastActive}`);
+  if (data.agentLabel) agentParts.push(displayText(data.agentLabel));
+  if (data.relatedAgents && data.relatedAgents.length > 1) agentParts.push(`${data.relatedAgents.length}个节点`);
+  if (data.lastActive) agentParts.push(`最后信号: ${data.lastActive}`);
 
   // Phase durations
   const phaseDurations = data.phaseDurations || [];
   const maxDur = Math.max(...phaseDurations.map((p) => p.durationSec || 1), 1);
   const phaseColors: Record<string, string> = {
-    '皇上': '#eab308', '太子': '#f97316', '中书省': '#3b82f6', '门下省': '#8b5cf6',
-    '尚书省': '#10b981', '六部': '#06b6d4', '礼部': '#ec4899', '户部': '#f59e0b',
-    '兵部': '#ef4444', '刑部': '#6366f1', '工部': '#14b8a6', '吏部': '#d946ef',
+    '主人': '#eab308',
+    '云霄': '#f97316',
+    '星枢': '#3b82f6',
+    '棱镜': '#8b5cf6',
+    '中继': '#10b981',
+    '执行群组': '#06b6d4',
+    '执行节点': '#06b6d4',
+    '文枢': '#ec4899',
+    '源流': '#f59e0b',
+    '维控': '#ef4444',
+    '探针': '#6366f1',
+    '机务': '#14b8a6',
+    '序列': '#d946ef',
   };
 
   // Todos summary
@@ -490,30 +500,30 @@ function LiveActivitySection({
       <div className="la-header">
         <span className="la-title">
           <span className={`la-dot${isActive ? '' : ' idle'}`} />
-          {isDone ? '执行回顾' : '实时动态'}
+          {isDone ? '任务回放' : '实时遥测'}
         </span>
-        <span className="la-agent">{agentParts.join(' · ') || '加载中...'}</span>
+        <span className="la-agent">{agentParts.join(' · ') || '遥测加载中...'}</span>
       </div>
 
       {/* Phase Bars */}
       {phaseDurations.length > 0 && (
         <div style={{ padding: '4px 0 8px', borderBottom: '1px solid var(--line)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600 }}>⏱ 阶段耗时</span>
-            {data.totalDuration && <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--muted)' }}>总耗时 {data.totalDuration}</span>}
+            <span style={{ fontSize: 11, fontWeight: 600 }}>⏱ 航段耗时</span>
+            {data.totalDuration && <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--muted)' }}>总航时 {data.totalDuration}</span>}
           </div>
           {phaseDurations.map((p, i) => {
             const pct = Math.max(5, Math.round(((p.durationSec || 1) / maxDur) * 100));
             const color = phaseColors[p.phase] || '#6b7280';
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0', fontSize: 11 }}>
-                <span style={{ minWidth: 48, color: 'var(--muted)', textAlign: 'right' }}>{p.phase}</span>
+                <span style={{ minWidth: 48, color: 'var(--muted)', textAlign: 'right' }}>{displayName(p.phase)}</span>
                 <div style={{ flex: 1, height: 14, background: 'var(--panel)', borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, opacity: p.ongoing ? 0.6 : 0.85 }} />
                 </div>
                 <span style={{ minWidth: 60, fontSize: 10, color: 'var(--muted)' }}>
                   {p.durationText}
-                  {p.ongoing && <span style={{ fontSize: 9, color: '#60a5fa' }}> ●进行中</span>}
+                  {p.ongoing && <span style={{ fontSize: 9, color: '#60a5fa' }}> ●推进中</span>}
                 </span>
               </div>
             );
@@ -525,7 +535,7 @@ function LiveActivitySection({
       {ts && (
         <div style={{ padding: '4px 0 8px', borderBottom: '1px solid var(--line)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 600 }}>📊 执行进度</span>
+            <span style={{ fontSize: 11, fontWeight: 600 }}>📊 链路进度</span>
             <span style={{ fontSize: 20, fontWeight: 700, color: ts.percent >= 100 ? '#22c55e' : ts.percent >= 50 ? '#60a5fa' : 'var(--text)' }}>{ts.percent}%</span>
             <span style={{ fontSize: 10, color: 'var(--muted)' }}>✅{ts.completed} 🔄{ts.inProgress} ⬜{ts.notStarted} / 共{ts.total}项</span>
           </div>
@@ -539,7 +549,7 @@ function LiveActivitySection({
       {/* Resource Summary */}
       {rs && (rs.totalTokens || rs.totalCost) && (
         <div style={{ padding: '4px 0 8px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, fontWeight: 600 }}>📈 资源消耗</span>
+          <span style={{ fontSize: 11, fontWeight: 600 }}>📈 资源通量</span>
           {rs.totalTokens != null && <span style={{ fontSize: 11, color: 'var(--muted)' }}>🔢 {rs.totalTokens.toLocaleString()} tokens</span>}
           {rs.totalCost != null && <span style={{ fontSize: 11, color: 'var(--muted)' }}>💰 ${rs.totalCost.toFixed(4)}</span>}
           {rs.totalElapsedSec != null && (
@@ -558,7 +568,7 @@ function LiveActivitySection({
             {flowItems.map((a, i) => (
               <div className="la-entry la-tool" key={`flow-${i}`}>
                 <span className="la-icon">📋</span>
-                <span className="la-body"><b>{a.from}</b> → <b>{a.to}</b>　{a.remark || ''}</span>
+                <span className="la-body"><b>{displayName(a.from || '')}</b> → <b>{displayName(a.to || '')}</b>　{displayText(a.remark || '')}</span>
                 <span className="la-time">{fmtActivityTime(a.at)}</span>
               </div>
             ))}
@@ -590,7 +600,7 @@ function LiveActivitySection({
         ) : (
           !flowItems.length && (
             <div className="la-empty">
-              {data.message || data.error || 'Agent 尚未上报进展（等待 Agent 调用 progress 命令）'}
+              {displayText(data.message || data.error || '节点尚未回传遥测（等待 Agent 调用 progress 命令）')}
             </div>
           )
         )}
@@ -611,7 +621,7 @@ function ActivityEntryView({ entry: a }: { entry: ActivityEntry }) {
     return (
       <div className="la-entry la-assistant">
         <span className="la-icon">🔄</span>
-        <span className="la-body">{agBadge}<b>当前进展：</b>{a.text}</span>
+        <span className="la-body">{agBadge}<b>当前链路：</b>{displayText(a.text || '')}</span>
         <span className="la-time">{time}</span>
       </div>
     );
@@ -626,7 +636,7 @@ function ActivityEntryView({ entry: a }: { entry: ActivityEntry }) {
     }
     return (
       <div className="la-entry" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{agBadge}📝 执行计划</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{agBadge}📝 执行蓝图</div>
         {items.map((td) => {
           const icon = td.status === 'completed' ? '✅' : td.status === 'in-progress' ? '🔄' : '⬜';
           const d = diffMap.get(String(td.id));
@@ -637,7 +647,7 @@ function ActivityEntryView({ entry: a }: { entry: ActivityEntry }) {
               : {};
           return (
             <div key={td.id} style={style}>
-              {icon} {td.title}
+              {icon} {displayText(td.title)}
               {d && d.type === 'changed' && d.to === 'completed' && <span style={{ color: '#22c55e', fontSize: 9, marginLeft: 4 }}>✨刚完成</span>}
               {d && d.type === 'changed' && d.to !== 'completed' && <span style={{ color: '#f59e0b', fontSize: 9, marginLeft: 4 }}>↻{d.from}→{d.to}</span>}
               {d && d.type === 'added' && <span style={{ color: '#3b82f6', fontSize: 9, marginLeft: 4 }}>🆕新增</span>}
@@ -657,21 +667,21 @@ function ActivityEntryView({ entry: a }: { entry: ActivityEntry }) {
         {a.thinking && (
           <div className="la-entry la-thinking">
             <span className="la-icon">💭</span>
-            <span className="la-body">{agBadge}{a.thinking}</span>
+            <span className="la-body">{agBadge}{displayText(a.thinking || '')}</span>
             <span className="la-time">{time}</span>
           </div>
         )}
         {a.tools?.map((tc, i) => (
           <div className="la-entry la-tool" key={i}>
             <span className="la-icon">🔧</span>
-            <span className="la-body">{agBadge}<span className="la-tool-name">{tc.name}</span><span className="la-trunc">{tc.input_preview || ''}</span></span>
+            <span className="la-body">{agBadge}<span className="la-tool-name">{tc.name}</span><span className="la-trunc">{displayText(tc.input_preview || '')}</span></span>
             <span className="la-time">{time}</span>
           </div>
         ))}
         {a.text && (
           <div className="la-entry la-assistant">
             <span className="la-icon">🤖</span>
-            <span className="la-body">{agBadge}{a.text}</span>
+            <span className="la-body">{agBadge}{displayText(a.text || '')}</span>
             <span className="la-time">{time}</span>
           </div>
         )}
@@ -684,7 +694,7 @@ function ActivityEntryView({ entry: a }: { entry: ActivityEntry }) {
     return (
       <div className={`la-entry la-tool-result ${ok ? 'ok' : 'err'}`}>
         <span className="la-icon">{ok ? '✅' : '❌'}</span>
-        <span className="la-body">{agBadge}<span className="la-tool-name">{a.tool || ''}</span>{a.output ? a.output.substring(0, 150) : ''}</span>
+        <span className="la-body">{agBadge}<span className="la-tool-name">{a.tool || ''}</span>{displayText(a.output ? a.output.substring(0, 150) : '')}</span>
         <span className="la-time">{time}</span>
       </div>
     );
@@ -694,7 +704,7 @@ function ActivityEntryView({ entry: a }: { entry: ActivityEntry }) {
     return (
       <div className="la-entry la-user">
         <span className="la-icon">📥</span>
-        <span className="la-body">{agBadge}{a.text || ''}</span>
+        <span className="la-body">{agBadge}{displayText(a.text || '')}</span>
         <span className="la-time">{time}</span>
       </div>
     );

@@ -29,7 +29,7 @@ export const api = {
   liveStatus: () => fetchJ<LiveStatus>(`${API_BASE}/api/live-status`),
   agentConfig: () => fetchJ<AgentConfig>(`${API_BASE}/api/agent-config`),
   modelChangeLog: () => fetchJ<ChangeLogEntry[]>(`${API_BASE}/api/model-change-log`).catch(() => []),
-  officialsStats: () => fetchJ<OfficialsData>(`${API_BASE}/api/officials-stats`),
+  nodesStats: () => fetchJ<NodesData>(`${API_BASE}/api/nodes-stats`),
   morningBrief: () => fetchJ<MorningBrief>(`${API_BASE}/api/morning-brief`),
   morningConfig: () => fetchJ<SubConfig>(`${API_BASE}/api/morning-config`),
   agentsStatus: () => fetchJ<AgentsStatusData>(`${API_BASE}/api/agents-status`),
@@ -96,17 +96,17 @@ export const api = {
   createTask: (data: CreateTaskPayload) =>
     postJ<ActionResult & { taskId?: string }>(`${API_BASE}/api/create-task`, data),
 
-  // ── 朝堂议政 ──
-  courtDiscussStart: (topic: string, officials: string[], taskId?: string) =>
-    postJ<CourtDiscussResult>(`${API_BASE}/api/court-discuss/start`, { topic, officials, taskId }),
-  courtDiscussAdvance: (sessionId: string, userMessage?: string, decree?: string) =>
-    postJ<CourtDiscussResult>(`${API_BASE}/api/court-discuss/advance`, { sessionId, userMessage, decree }),
-  courtDiscussConclude: (sessionId: string) =>
-    postJ<ActionResult & { summary?: string }>(`${API_BASE}/api/court-discuss/conclude`, { sessionId }),
-  courtDiscussDestroy: (sessionId: string) =>
-    postJ<ActionResult>(`${API_BASE}/api/court-discuss/destroy`, { sessionId }),
-  courtDiscussFate: () =>
-    fetchJ<{ ok: boolean; event: string }>(`${API_BASE}/api/court-discuss/fate`),
+  // ── 舰桥议程 ──
+  bridgeDiscussStart: (topic: string, nodes: string[], taskId?: string) =>
+    postJ<BridgeDiscussResult>(`${API_BASE}/api/bridge-discuss/start`, { topic, nodes, taskId }),
+  bridgeDiscussAdvance: (sessionId: string, userMessage?: string, systemEvent?: string) =>
+    postJ<BridgeDiscussResult>(`${API_BASE}/api/bridge-discuss/advance`, { sessionId, userMessage, systemEvent }),
+  bridgeDiscussConclude: (sessionId: string) =>
+    postJ<ActionResult & { summary?: string }>(`${API_BASE}/api/bridge-discuss/conclude`, { sessionId }),
+  bridgeDiscussDestroy: (sessionId: string) =>
+    postJ<ActionResult>(`${API_BASE}/api/bridge-discuss/destroy`, { sessionId }),
+  bridgeDiscussFate: () =>
+    fetchJ<{ ok: boolean; event: string }>(`${API_BASE}/api/bridge-discuss/fate`),
 };
 
 // ── Types ──
@@ -203,7 +203,7 @@ export interface ChangeLogEntry {
   rolledBack?: boolean;
 }
 
-export interface OfficialInfo {
+export interface NodeInfo {
   id: string;
   label: string;
   emoji: string;
@@ -229,10 +229,10 @@ export interface OfficialInfo {
   participated_edicts: { id: string; title: string; state: string }[];
 }
 
-export interface OfficialsData {
-  officials: OfficialInfo[];
+export interface NodesData {
+  nodes: NodeInfo[];
   totals: { tasks_done: number; cost_cny: number };
-  top_official: string;
+  top_node: string;
 }
 
 export interface AgentStatusInfo {
@@ -412,15 +412,15 @@ export interface RemoteSkillsListResult {
   error?: string;
 }
 
-// ── 朝堂议政 ──
+// ── 舰桥议程 ──
 
-export interface CourtDiscussResult {
+export interface BridgeDiscussResult {
   ok: boolean;
   session_id?: string;
   topic?: string;
   round?: number;
   new_messages?: Array<{
-    official_id: string;
+    node_id: string;
     name: string;
     content: string;
     emotion?: string;

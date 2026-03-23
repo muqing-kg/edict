@@ -3,9 +3,13 @@
 同步 openclaw.json 中的 agent 配置 → data/agent_config.json
 支持自动发现 agent workspace 下的 Skills 目录
 """
-import json, pathlib, datetime, logging
+import json
+import pathlib
+import datetime
+import logging
 from typing import Optional
 from file_lock import atomic_json_write
+from utils import load_openclaw_cfg, resolve_workspace
 
 log = logging.getLogger('sync_agent_config')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
@@ -13,21 +17,33 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message
 # Auto-detect project root (parent of scripts/)
 BASE = pathlib.Path(__file__).parent.parent
 DATA = BASE / 'data'
-OPENCLAW_CFG = pathlib.Path.home() / '.openclaw' / 'openclaw.json'
 
 ID_LABEL = {
-    'taizi':    {'label': '云霄', 'role': '入口分拣核心', 'duty': '输入分拣与需求提炼', 'emoji': '🧭'},
-    'main':     {'label': '云霄', 'role': '入口分拣核心', 'duty': '输入分拣与需求提炼', 'emoji': '🧭'},  # 兼容旧配置
-    'zhongshu': {'label': '星枢', 'role': '规划与起草中枢', 'duty': '方案规划与执行路径起草', 'emoji': '🧠'},
-    'menxia':   {'label': '棱镜', 'role': '校核与拦截中枢', 'duty': '校核方案并打回修订', 'emoji': '🔍'},
-    'shangshu': {'label': '中继', 'role': '路由与调度中枢', 'duty': '派单、升级与执行协调', 'emoji': '📡'},
-    'libu':     {'label': '文枢', 'role': '文档与表达模块', 'duty': '文档、汇报与输出规范', 'emoji': '📝'},
-    'hubu':     {'label': '源流', 'role': '资源与数据模块', 'duty': '资源、预算、成本与数据分析', 'emoji': '💾'},
-    'bingbu':   {'label': '维控', 'role': '执行与安全模块', 'duty': '运维、安全、应急与巡检', 'emoji': '🛡️'},
-    'xingbu':   {'label': '探针', 'role': '审计与校验模块', 'duty': '合规、审计、测试与质量校验', 'emoji': '⚖️'},
-    'gongbu':   {'label': '机务', 'role': '工程与设施模块', 'duty': '工程实现、自动化与基础设施', 'emoji': '🔧'},
-    'libu_hr':  {'label': '序列', 'role': '编组与权限模块', 'duty': '人员编组、权限治理与 Agent 管理', 'emoji': '🗂️'},
-    'zaochao':  {'label': '天眼', 'role': '态势与情报模块', 'duty': '每日情报采集与简报', 'emoji': '🛰️'},
+    'main': {'label': '云霄', 'role': '入口分拣核心', 'duty': '输入分拣与需求提炼', 'emoji': '🧭'},
+    'xingshu': {'label': '星枢', 'role': '规划与起草中枢', 'duty': '方案规划与执行路径起草', 'emoji': '🧠'},
+    'lengjing': {'label': '棱镜', 'role': '校核与拦截中枢', 'duty': '校核方案并打回修订', 'emoji': '🔍'},
+    'zhongji': {'label': '中继', 'role': '路由与调度中枢', 'duty': '派单、升级与执行协调', 'emoji': '📡'},
+    'wenshu': {'label': '文枢', 'role': '文档与表达模块', 'duty': '文档、汇报与输出规范', 'emoji': '📝'},
+    'yuanliu': {'label': '源流', 'role': '资源与数据模块', 'duty': '资源、预算、成本与数据分析', 'emoji': '💾'},
+    'weikong':   {'label': '维控', 'role': '执行与安全模块', 'duty': '运维、安全、应急与巡检', 'emoji': '🛡️'},
+    'tanzhen':   {'label': '探针', 'role': '审计与校验模块', 'duty': '合规、审计、测试与质量校验', 'emoji': '⚖️'},
+    'jiwu':   {'label': '机务', 'role': '工程与设施模块', 'duty': '工程实现、自动化与基础设施', 'emoji': '🔧'},
+    'xulie':  {'label': '序列', 'role': '编组与权限模块', 'duty': '人员编组、权限治理与 Agent 管理', 'emoji': '🗂️'},
+    'tianyan':  {'label': '天眼', 'role': '态势与情报模块', 'duty': '每日情报采集与简报', 'emoji': '🛰️'},
+}
+
+DEFAULT_ALLOW_AGENTS = {
+    'main': ['xingshu'],
+    'xingshu': ['lengjing', 'zhongji'],
+    'lengjing': ['zhongji', 'xingshu'],
+    'zhongji': ['xingshu', 'lengjing', 'yuanliu', 'wenshu', 'weikong', 'tanzhen', 'jiwu', 'xulie'],
+    'wenshu': ['zhongji'],
+    'yuanliu': ['zhongji'],
+    'weikong': ['zhongji'],
+    'tanzhen': ['zhongji'],
+    'jiwu': ['zhongji'],
+    'xulie': ['zhongji'],
+    'tianyan': [],
 }
 
 KNOWN_MODELS = [
@@ -109,11 +125,9 @@ def _collect_openclaw_models(cfg):
 
 
 def main():
-    cfg = {}
-    try:
-        cfg = json.loads(OPENCLAW_CFG.read_text())
-    except Exception as e:
-        log.warning(f'cannot read openclaw.json: {e}')
+    cfg = load_openclaw_cfg()
+    if not cfg:
+        log.warning('cannot read openclaw.json')
         return
 
     agents_cfg = cfg.get('agents', {})
@@ -128,7 +142,7 @@ def main():
         if ag_id not in ID_LABEL:
             continue
         meta = ID_LABEL[ag_id]
-        workspace = ag.get('workspace', str(pathlib.Path.home() / f'.openclaw/workspace-{ag_id}'))
+        workspace = str(resolve_workspace(ag_id, cfg=cfg))
         result.append({
             'id': ag_id,
             'label': meta['label'], 'role': meta['role'], 'duty': meta['duty'], 'emoji': meta['emoji'],
@@ -136,33 +150,23 @@ def main():
             'defaultModel': default_model,
             'workspace': workspace,
             'skills': get_skills(workspace),
-            'allowAgents': ag.get('subagents', {}).get('allowAgents', []),
+            'allowAgents': ag.get('subagents', {}).get('allowAgents', DEFAULT_ALLOW_AGENTS.get(ag_id, [])),
         })
         seen_ids.add(ag_id)
 
-    # 补充不在 openclaw.json agents list 中的 agent（兼容旧版 main）
-    EXTRA_AGENTS = {
-        'taizi':   {'model': default_model, 'workspace': str(pathlib.Path.home() / '.openclaw/workspace-taizi'),
-                    'allowAgents': ['zhongshu']},
-        'main':    {'model': default_model, 'workspace': str(pathlib.Path.home() / '.openclaw/workspace-main'),
-                    'allowAgents': ['zhongshu','menxia','shangshu','hubu','libu','bingbu','xingbu','gongbu','libu_hr']},
-        'zaochao': {'model': default_model, 'workspace': str(pathlib.Path.home() / '.openclaw/workspace-zaochao'),
-                    'allowAgents': []},
-        'libu_hr': {'model': default_model, 'workspace': str(pathlib.Path.home() / '.openclaw/workspace-libu_hr'),
-                    'allowAgents': ['shangshu']},
-    }
-    for ag_id, extra in EXTRA_AGENTS.items():
+    # 补充未注册但仍需在 UI 可见的舰载节点。
+    for ag_id, meta in ID_LABEL.items():
         if ag_id in seen_ids or ag_id not in ID_LABEL:
             continue
-        meta = ID_LABEL[ag_id]
+        workspace = str(resolve_workspace(ag_id, cfg=cfg))
         result.append({
             'id': ag_id,
             'label': meta['label'], 'role': meta['role'], 'duty': meta['duty'], 'emoji': meta['emoji'],
-            'model': extra['model'],
+            'model': default_model,
             'defaultModel': default_model,
-            'workspace': extra['workspace'],
-            'skills': get_skills(extra['workspace']),
-            'allowAgents': extra['allowAgents'],
+            'workspace': workspace,
+            'skills': get_skills(workspace),
+            'allowAgents': DEFAULT_ALLOW_AGENTS.get(ag_id, []),
             'isDefaultModel': True,
         })
 
@@ -194,17 +198,17 @@ def main():
 
 # 项目 agents/ 目录名 → 运行时 agent_id 映射
 _SOUL_DEPLOY_MAP = {
-    'taizi': 'taizi',
-    'zhongshu': 'zhongshu',
-    'menxia': 'menxia',
-    'shangshu': 'shangshu',
-    'libu': 'libu',
-    'hubu': 'hubu',
-    'bingbu': 'bingbu',
-    'xingbu': 'xingbu',
-    'gongbu': 'gongbu',
-    'libu_hr': 'libu_hr',
-    'zaochao': 'zaochao',
+    'main': 'main',
+    'xingshu': 'xingshu',
+    'lengjing': 'lengjing',
+    'zhongji': 'zhongji',
+    'wenshu': 'wenshu',
+    'yuanliu': 'yuanliu',
+    'weikong': 'weikong',
+    'tanzhen': 'tanzhen',
+    'jiwu': 'jiwu',
+    'xulie': 'xulie',
+    'tianyan': 'tianyan',
 }
 
 _SOUL_LOCAL_FILENAMES = ('SOUL.local.md', 'soul.local.md')
@@ -268,9 +272,12 @@ def sync_scripts_to_workspaces():
     scripts_src = BASE / 'scripts'
     if not scripts_src.is_dir():
         return
+    cfg = load_openclaw_cfg()
     synced = 0
     for proj_name, runtime_id in _SOUL_DEPLOY_MAP.items():
-        ws_scripts = pathlib.Path.home() / f'.openclaw/workspace-{runtime_id}' / 'scripts'
+        if runtime_id == 'main':
+            continue
+        ws_scripts = resolve_workspace(runtime_id, cfg=cfg) / 'scripts'
         ws_scripts.mkdir(parents=True, exist_ok=True)
         for src_file in scripts_src.iterdir():
             if src_file.suffix not in ('.py', '.sh') or src_file.stem.startswith('__'):
@@ -287,21 +294,6 @@ def sync_scripts_to_workspaces():
             if src_text != dst_text:
                 dst_file.write_bytes(src_text)
                 synced += 1
-    # also sync to workspace-main for legacy compatibility
-    ws_main_scripts = pathlib.Path.home() / '.openclaw/workspace-main/scripts'
-    ws_main_scripts.mkdir(parents=True, exist_ok=True)
-    for src_file in scripts_src.iterdir():
-        if src_file.suffix not in ('.py', '.sh') or src_file.stem.startswith('__'):
-            continue
-        dst_file = ws_main_scripts / src_file.name
-        try:
-            src_text = src_file.read_bytes()
-            dst_text = dst_file.read_bytes() if dst_file.exists() else b''
-            if src_text != dst_text:
-                dst_file.write_bytes(src_text)
-                synced += 1
-        except Exception:
-            pass
     if synced:
         log.info(f'{synced} script files synced to workspaces')
 
@@ -309,12 +301,13 @@ def sync_scripts_to_workspaces():
 def deploy_soul_files():
     """将项目 agents/xxx/SOUL.md 与本机 SOUL.local.md 合成为运行态文件。"""
     agents_dir = BASE / 'agents'
+    cfg = load_openclaw_cfg()
     deployed = 0
     for proj_name, runtime_id in _SOUL_DEPLOY_MAP.items():
         src = agents_dir / proj_name / 'SOUL.md'
         if not src.exists():
             continue
-        ws_dir = pathlib.Path.home() / f'.openclaw/workspace-{runtime_id}'
+        ws_dir = resolve_workspace(runtime_id, cfg=cfg)
         ws_dst = ws_dir / 'SOUL.md'
         ws_compat_dst = ws_dir / 'soul.md'
         ws_dir.mkdir(parents=True, exist_ok=True)
@@ -327,16 +320,6 @@ def deploy_soul_files():
                 wrote = True
         if wrote:
             deployed += 1
-        # 太子兼容：同步一份到 legacy main workspace / agent 目录
-        if runtime_id == 'taizi':
-            main_ws_dir = pathlib.Path.home() / '.openclaw/workspace-main'
-            main_ws_dir.mkdir(parents=True, exist_ok=True)
-            for main_dst in (main_ws_dir / 'SOUL.md', main_ws_dir / 'soul.md'):
-                _write_text_if_changed(main_dst, src_text)
-            ag_dir = pathlib.Path.home() / '.openclaw/agents/main'
-            ag_dir.mkdir(parents=True, exist_ok=True)
-            for ag_dst in (ag_dir / 'SOUL.md', ag_dir / 'soul.md'):
-                _write_text_if_changed(ag_dst, src_text)
         # 确保 sessions 目录存在
         sess_dir = pathlib.Path.home() / f'.openclaw/agents/{runtime_id}/sessions'
         sess_dir.mkdir(parents=True, exist_ok=True)

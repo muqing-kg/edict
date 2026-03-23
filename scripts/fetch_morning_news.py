@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-早朝简报采集脚本
+天眼简报采集脚本
 每日 06:00 自动运行，抓取全球新闻 RSS → data/morning_brief_YYYYMMDD.json
 覆盖: 政治 | 军事 | 经济 | AI大模型
 """
@@ -9,7 +9,7 @@ from xml.etree import ElementTree as ET
 from file_lock import atomic_json_write
 from utils import validate_url
 
-log = logging.getLogger('朝报')
+log = logging.getLogger('天眼简报')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
 
 DATA = pathlib.Path(__file__).resolve().parent.parent / 'data'

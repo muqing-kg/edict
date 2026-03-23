@@ -11,15 +11,17 @@ router = APIRouter()
 
 # Agent 元信息（对应 agents/ 目录下的 SOUL.md）
 AGENT_META = {
-    "zaochao": {"name": "早朝（朝会主持）", "role": "朝会召集与议程管理", "icon": "🏛️"},
-    "shangshu": {"name": "尚书令", "role": "总协调与任务监督", "icon": "📜"},
-    "zhongshu": {"name": "中书省", "role": "起草诏令与方案规划", "icon": "✍️"},
-    "menxia": {"name": "门下省", "role": "审核与封驳", "icon": "🔍"},
-    "libu": {"name": "吏部", "role": "人事与组织管理", "icon": "👤"},
-    "hubu": {"name": "户部", "role": "财务与资源管理", "icon": "💰"},
-    "gongbu": {"name": "工部", "role": "工程与技术实施", "icon": "🔧"},
-    "xingbu": {"name": "刑部", "role": "规范与质量审查", "icon": "⚖️"},
-    "bingbu": {"name": "兵部", "role": "安全与应急响应", "icon": "🛡️"},
+    "main": {"name": "云霄", "role": "入口分拣核心", "icon": "🧭"},
+    "tianyan": {"name": "天眼", "role": "态势汇聚与议程管理", "icon": "🛰️"},
+    "zhongji": {"name": "中继", "role": "总协调与任务监督", "icon": "📡"},
+    "xingshu": {"name": "星枢", "role": "方案起草与规划中枢", "icon": "🧠"},
+    "lengjing": {"name": "棱镜", "role": "审核校核与拦截把关", "icon": "🔍"},
+    "wenshu": {"name": "文枢", "role": "文档整理与表达输出", "icon": "📝"},
+    "xulie": {"name": "序列", "role": "人事与组织编排", "icon": "👤"},
+    "yuanliu": {"name": "源流", "role": "资源与数据管理", "icon": "💰"},
+    "jiwu": {"name": "机务", "role": "工程与技术实施", "icon": "🔧"},
+    "tanzhen": {"name": "探针", "role": "规范与质量审查", "icon": "⚖️"},
+    "weikong": {"name": "维控", "role": "执行安全与应急响应", "icon": "🛡️"},
 }
 
 

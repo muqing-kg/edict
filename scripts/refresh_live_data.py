@@ -19,9 +19,9 @@ def output_meta(path):
 
 
 def main():
-    # 使用 officials_stats.json（与 sync_officials_stats.py 统一）
-    officials_data = read_json(DATA / 'officials_stats.json', {})
-    officials = officials_data.get('officials', []) if isinstance(officials_data, dict) else officials_data
+    # 使用 nodes_stats.json（与 sync_nodes_stats.py 统一）
+    nodes_data = read_json(DATA / 'nodes_stats.json', {})
+    nodes = nodes_data.get('nodes', []) if isinstance(nodes_data, dict) else nodes_data
     # 任务源优先：tasks_source.json（可对接外部系统同步写入）
     tasks = atomic_json_read(DATA / 'tasks_source.json', [])
     if not tasks:
@@ -30,14 +30,14 @@ def main():
     sync_status = read_json(DATA / 'sync_status.json', {})
 
     org_map = {}
-    for o in officials:
+    for o in nodes:
         label = o.get('label', o.get('name', ''))
         if label:
             org_map[label] = label
 
     now_ts = datetime.datetime.now(datetime.timezone.utc)
     for t in tasks:
-        t['org'] = t.get('org') or org_map.get(t.get('official', ''), '')
+        t['org'] = t.get('org') or org_map.get(t.get('owner', ''), '')
         t['outputMeta'] = output_meta(t.get('output', ''))
 
         # 心跳时效检测：对 Doing/Assigned 状态的任务标注活跃度
@@ -87,7 +87,7 @@ def main():
             lm = t.get('outputMeta', {}).get('lastModified')
             history.append({
                 'at': lm or '未知',
-                'official': t.get('official'),
+                'owner': t.get('owner'),
                 'task': t.get('title'),
                 'out': t.get('output'),
                 'qa': '通过' if t.get('outputMeta', {}).get('exists') else '待补成果'
@@ -96,11 +96,11 @@ def main():
     payload = {
         'generatedAt': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'taskSource': 'tasks_source.json' if (DATA / 'tasks_source.json').exists() else 'tasks.json',
-        'officials': officials,
+        'nodes': nodes,
         'tasks': tasks,
         'history': history,
         'metrics': {
-            'officialCount': len(officials),
+            'nodeCount': len(nodes),
             'todayDone': today_done,
             'totalDone': total_done,
             'inProgress': in_progress,

@@ -28,9 +28,9 @@ function humanTitle(t: Task, labelMap: Record<string, string>): string {
   const m = title.match(/^agent:(\w+):(\w+)/);
   if (m) {
     const agLabel = labelMap[m[1]] || m[1];
-    if (m[2] === 'main') return agLabel + ' · 主会话';
-    if (m[2] === 'subagent') return agLabel + ' · 子任务执行';
-    if (m[2] === 'cron') return agLabel + ' · 定时任务';
+    if (m[2] === 'main') return agLabel + ' · 主链会话';
+    if (m[2] === 'subagent') return agLabel + ' · 侧链执行';
+    if (m[2] === 'cron') return agLabel + ' · 定时脉冲';
     return agLabel + ' · ' + m[2];
   }
   return title.replace(/ 会话$/, '') || t.id;
@@ -41,9 +41,9 @@ function channelLabel(t: Task): { icon: string; text: string } {
   if (now.includes('feishu/direct')) return { icon: '💬', text: '飞书对话' };
   if (now.includes('feishu')) return { icon: '💬', text: '飞书' };
   if (now.includes('webchat')) return { icon: '🌐', text: 'WebChat' };
-  if (now.includes('cron')) return { icon: '⏰', text: '定时' };
+  if (now.includes('cron')) return { icon: '⏰', text: '定时脉冲' };
   if (now.includes('direct')) return { icon: '📨', text: '直连' };
-  return { icon: '🔗', text: '会话' };
+  return { icon: '🔗', text: '侧链' };
 }
 
 function lastMessage(t: Task): string {
@@ -83,7 +83,7 @@ export default function SessionsPanel() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { key: 'all', label: `全部 (${sessions.length})` },
-          { key: 'active', label: '活跃' },
+          { key: 'active', label: '在线' },
           ...agentIds.slice(0, 8).map((id) => ({ key: id, label: labelMap[id] || id })),
         ].map((f) => (
           <span
@@ -100,7 +100,7 @@ export default function SessionsPanel() {
       <div className="sess-grid">
         {!filtered.length ? (
           <div style={{ fontSize: 13, color: 'var(--muted)', padding: 24, textAlign: 'center', gridColumn: '1/-1' }}>
-            暂无小任务/会话数据
+            暂无侧链会话数据
           </div>
         ) : (
           filtered.map((t) => {
@@ -141,7 +141,7 @@ export default function SessionsPanel() {
                   </div>
                 )}
                 <div className="sc-meta">
-                  {totalTk ? <span style={{ fontSize: 10, color: 'var(--muted)' }}>🪙 {totalTk.toLocaleString()} tokens</span> : null}
+                  {totalTk ? <span style={{ fontSize: 10, color: 'var(--muted)' }}>🪙 {totalTk.toLocaleString()} 通量</span> : null}
                   {updatedAt ? <span className="sc-time">{timeAgo(updatedAt)}</span> : null}
                 </div>
               </div>
@@ -200,35 +200,35 @@ function SessionDetailModal({
             {totalTokens != null && (
               <div style={{ background: 'var(--panel2)', padding: '10px 16px', borderRadius: 8, fontSize: 12 }}>
                 <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--acc)' }}>{totalTokens.toLocaleString()}</div>
-                <div style={{ color: 'var(--muted)', fontSize: 10 }}>总 Tokens</div>
+                <div style={{ color: 'var(--muted)', fontSize: 10 }}>总通量</div>
               </div>
             )}
             {inputTokens != null && (
               <div style={{ background: 'var(--panel2)', padding: '10px 16px', borderRadius: 8, fontSize: 12 }}>
                 <div style={{ fontSize: 16, fontWeight: 700 }}>{inputTokens.toLocaleString()}</div>
-                <div style={{ color: 'var(--muted)', fontSize: 10 }}>输入</div>
+                <div style={{ color: 'var(--muted)', fontSize: 10 }}>输入通量</div>
               </div>
             )}
             {outputTokens != null && (
               <div style={{ background: 'var(--panel2)', padding: '10px 16px', borderRadius: 8, fontSize: 12 }}>
                 <div style={{ fontSize: 16, fontWeight: 700 }}>{outputTokens.toLocaleString()}</div>
-                <div style={{ color: 'var(--muted)', fontSize: 10 }}>输出</div>
+                <div style={{ color: 'var(--muted)', fontSize: 10 }}>输出通量</div>
               </div>
             )}
           </div>
 
           {/* Recent Activity */}
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-            📋 最近活动 <span style={{ fontWeight: 400, color: 'var(--muted)' }}>({acts.length} 条)</span>
+            📋 最近信号 <span style={{ fontWeight: 400, color: 'var(--muted)' }}>({acts.length} 条)</span>
           </div>
           <div style={{ maxHeight: 350, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--panel2)' }}>
             {!acts.length ? (
-              <div style={{ padding: 16, color: 'var(--muted)', fontSize: 12, textAlign: 'center' }}>暂无活动记录</div>
+              <div style={{ padding: 16, color: 'var(--muted)', fontSize: 12, textAlign: 'center' }}>暂无信号记录</div>
             ) : (
               acts.slice(-15).reverse().map((a, i) => {
                 const kind = a.kind || '';
                 const kIcon = kind === 'assistant' ? '🤖' : kind === 'tool' ? '🔧' : kind === 'user' ? '👤' : '📝';
-                const kLabel = kind === 'assistant' ? '回复' : kind === 'tool' ? '工具' : kind === 'user' ? '用户' : '事件';
+                const kLabel = kind === 'assistant' ? '回传' : kind === 'tool' ? '工具调用' : kind === 'user' ? '人工注入' : '系统扰动';
                 let txt = (a.text || '').replace(/\[\[.*?\]\]/g, '').replace(/\*\*/g, '').trim();
                 if (txt.length > 200) txt = txt.substring(0, 200) + '…';
                 const time = ((a.at as string) || '').substring(11, 19);

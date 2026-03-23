@@ -22,18 +22,18 @@ def main():
         )
         page = ctx.new_page()
 
-        # === Scene 1: Ceremony (3s) ===
-        print('🎬 Scene 1: Ceremony...')
+        # === Scene 1: Boot Sequence (3s) ===
+        print('🎬 Scene 1: Boot Sequence...')
         page.goto(URL)
         page.wait_for_timeout(500)
-        page.evaluate("localStorage.removeItem('openclaw_court_date')")
+        page.evaluate("localStorage.removeItem('edict_boot_sequence_date')")
         page.reload()
         page.wait_for_timeout(3500)
 
         # === Scene 2: Kanban overview (3s) ===
         print('📋 Scene 2: Kanban...')
-        # Ceremony should have auto-dismissed by now, or skip it
-        page.evaluate("localStorage.setItem('openclaw_court_date', new Date().toISOString().substring(0,10))")
+        # Boot Sequence should have auto-dismissed by now, or skip it
+        page.evaluate("localStorage.setItem('edict_boot_sequence_date', new Date().toISOString().substring(0,10))")
         page.reload()
         page.wait_for_load_state('networkidle')
         page.wait_for_timeout(2000)
@@ -57,9 +57,9 @@ def main():
         page.click('[data-tab="monitor"]')
         page.wait_for_timeout(2000)
 
-        # === Scene 5: Memorials (2s) ===
-        print('📜 Scene 5: Memorials...')
-        page.click('[data-tab="memorials"]')
+        # === Scene 5: Archives (2s) ===
+        print('📜 Scene 5: Archives...')
+        page.click('[data-tab="archives"]')
         page.wait_for_timeout(2000)
 
         # === Scene 6: Templates (2s) ===
@@ -67,9 +67,9 @@ def main():
         page.click('[data-tab="templates"]')
         page.wait_for_timeout(2000)
 
-        # === Scene 7: Officials (2s) ===
-        print('👥 Scene 7: Officials...')
-        page.click('[data-tab="officials"]')
+        # === Scene 7: Nodes (2s) ===
+        print('👥 Scene 7: Nodes...')
+        page.click('[data-tab="nodes"]')
         page.wait_for_timeout(2000)
 
         # === Scene 8: Models (1.5s) ===
