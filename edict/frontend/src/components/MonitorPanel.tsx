@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore, DEPTS, isEdict, stateLabel, displayName, displayText } from '../store';
+import { useStore, DEPTS, isEdict, stateLabel, displayName, displayText, formatLocalTime } from '../store';
 import { api, type NodeInfo } from '../api';
 
 export default function MonitorPanel() {
@@ -103,7 +103,7 @@ export default function MonitorPanel() {
             {offline > 0 && <span><span className="as-dot offline" style={{ position: 'static', width: 8, height: 8 }} /> {offline} 失联</span>}
             {unconf > 0 && <span><span className="as-dot unconfigured" style={{ position: 'static', width: 8, height: 8 }} /> {unconf} 未挂载</span>}
             <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--muted)' }}>
-              扫描于 {(asData.checkedAt || '').substring(11, 19)}
+              扫描于 {formatLocalTime(asData.checkedAt) || '--:--:--'}
             </span>
           </div>
         </div>

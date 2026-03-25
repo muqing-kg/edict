@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore, isEdict, STATE_LABEL, displayName, displayText } from '../store';
+import { useStore, isEdict, STATE_LABEL, displayName, displayText, formatLocalDateTime } from '../store';
 import type { Task, FlowEntry } from '../api';
 
 export default function ArchivePanel() {
@@ -19,14 +19,14 @@ export default function ArchivePanel() {
     md += `- **链路状态**: ${t.state}\n`;
     md += `- **负责节点**: ${displayName(t.org || '')}\n`;
     if (fl.length) {
-      const startAt = fl[0].at ? fl[0].at.substring(0, 19).replace('T', ' ') : '未知';
-      const endAt = fl[fl.length - 1].at ? fl[fl.length - 1].at.substring(0, 19).replace('T', ' ') : '未知';
+      const startAt = formatLocalDateTime(fl[0].at) || '未知';
+      const endAt = formatLocalDateTime(fl[fl.length - 1].at) || '未知';
       md += `- **开始时间**: ${startAt}\n`;
       md += `- **完成时间**: ${endAt}\n`;
     }
     md += `\n## 链路记录\n\n`;
     for (const f of fl) {
-      md += `- **${displayName(f.from || '')}** → **${displayName(f.to || '')}**  \n  ${displayText(f.remark || '')}  \n  _${(f.at || '').substring(0, 19)}_\n\n`;
+      md += `- **${displayName(f.from || '')}** → **${displayName(f.to || '')}**  \n  ${displayText(f.remark || '')}  \n  _${formatLocalDateTime(f.at) || String(f.at || '')}_\n\n`;
     }
     if (t.output && t.output !== '-') md += `## 落地产物\n\n\`${t.output}\`\n`;
     navigator.clipboard.writeText(md).then(
@@ -63,8 +63,8 @@ export default function ArchivePanel() {
           archives.map((t) => {
             const fl = t.flow_log || [];
             const depts = [...new Set(fl.map((f) => f.from).concat(fl.map((f) => f.to)).filter((x) => x && displayName(x) !== '主人'))];
-            const firstAt = fl.length ? (fl[0].at || '').substring(0, 16).replace('T', ' ') : '';
-            const lastAt = fl.length ? (fl[fl.length - 1].at || '').substring(0, 16).replace('T', ' ') : '';
+            const firstAt = fl.length ? formatLocalDateTime(fl[0].at, { withSeconds: false }) : '';
+            const lastAt = fl.length ? formatLocalDateTime(fl[fl.length - 1].at, { withSeconds: false }) : '';
             const stIcon = t.state === 'Done' ? '✅' : '🚫';
             return (
               <div className="archive-card" key={t.id} onClick={() => setDetailTask(t)}>
@@ -146,7 +146,7 @@ function ArchiveDetailModal({
                   <span className="md-tl-to">→ {displayName(f.to || '')}</span>
                 </div>
                 <div className="md-tl-remark">{displayText(f.remark || '')}</div>
-                <div className="md-tl-time">{(f.at || '').substring(0, 19).replace('T', ' ')}</div>
+                <div className="md-tl-time">{formatLocalDateTime(f.at) || String(f.at || '')}</div>
               </div>
             );
           })}

@@ -1,4 +1,4 @@
-import { useStore, isEdict, STATE_LABEL, timeAgo } from '../store';
+import { useStore, isEdict, STATE_LABEL, timeAgo, formatLocalTime } from '../store';
 import type { Task } from '../api';
 import { useState } from 'react';
 
@@ -231,7 +231,7 @@ function SessionDetailModal({
                 const kLabel = kind === 'assistant' ? '回传' : kind === 'tool' ? '工具调用' : kind === 'user' ? '人工注入' : '系统扰动';
                 let txt = (a.text || '').replace(/\[\[.*?\]\]/g, '').replace(/\*\*/g, '').trim();
                 if (txt.length > 200) txt = txt.substring(0, 200) + '…';
-                const time = ((a.at as string) || '').substring(11, 19);
+                const time = formatLocalTime(a.at) || '';
                 return (
                   <div key={i} style={{ padding: '8px 12px', borderBottom: '1px solid var(--line)', fontSize: 12, lineHeight: 1.5 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>

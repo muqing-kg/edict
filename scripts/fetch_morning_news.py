@@ -4,8 +4,9 @@
 每日 06:00 自动运行，抓取全球新闻 RSS → data/morning_brief_YYYYMMDD.json
 覆盖: 政治 | 军事 | 经济 | AI大模型
 """
-import json, pathlib, datetime, subprocess, re, sys, os, logging
+import json, pathlib, datetime, re, logging
 from xml.etree import ElementTree as ET
+from urllib.request import Request, urlopen
 from file_lock import atomic_json_write
 from utils import validate_url
 
@@ -46,15 +47,11 @@ CATEGORY_KEYWORDS = {
 }
 
 def curl_rss(url, timeout=10):
-    """用 curl 抓取 RSS"""
+    """抓取 RSS，避免依赖外部 curl 命令。"""
     try:
-        r = subprocess.run(
-            ['curl', '-s', '--max-time', str(timeout), '-L',
-             '-A', 'Mozilla/5.0 (compatible; MorningBrief/1.0)',
-             url],
-            capture_output=True, timeout=timeout+2
-        )
-        return r.stdout.decode('utf-8', errors='ignore')
+        req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (compatible; MorningBrief/1.0)'})
+        response = urlopen(req, timeout=timeout)
+        return response.read().decode('utf-8', errors='ignore')
     except Exception:
         return ''
 

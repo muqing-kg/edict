@@ -38,3 +38,28 @@ def test_healthz(tmp_path):
     assert body['status'] in ('ok', 'degraded')
 
     httpd.server_close()
+
+
+def test_cors_headers_fallback_uses_runtime_dashboard_port():
+    """cors fallback should respect the dashboard port configured at runtime."""
+    import server as srv
+
+    class DummyHandler:
+        def __init__(self):
+            self.headers = {}
+            self.sent = {}
+
+        def send_header(self, key, value):
+            self.sent[key] = value
+
+    original_allowed_origin = srv.ALLOWED_ORIGIN
+    original_dashboard_port = srv._DASHBOARD_PORT
+    try:
+        srv.ALLOWED_ORIGIN = None
+        srv._DASHBOARD_PORT = 19091
+        handler = DummyHandler()
+        srv.cors_headers(handler)
+        assert handler.sent["Access-Control-Allow-Origin"] == "http://127.0.0.1:19091"
+    finally:
+        srv.ALLOWED_ORIGIN = original_allowed_origin
+        srv._DASHBOARD_PORT = original_dashboard_port

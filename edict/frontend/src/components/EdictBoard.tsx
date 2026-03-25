@@ -1,4 +1,4 @@
-import { useStore, isEdict, isArchived, getPipeStatus, stateLabel, deptColor, PIPE, displayName, displayText } from '../store';
+import { useStore, isEdict, isArchived, getPipeStatus, stateLabel, deptColor, PIPE, displayName, displayText, formatLocalDateTime } from '../store';
 import { api, type Task } from '../api';
 
 // 排序权重
@@ -128,7 +128,7 @@ function EdictCard({ task }: { task: Task }) {
           </span>
         )}
         {task.eta && task.eta !== '-' && (
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>📅 {task.eta}</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>📅 {formatLocalDateTime(task.eta) || task.eta}</span>
         )}
       </div>
       <div className="ec-actions" onClick={(e) => e.stopPropagation()}>

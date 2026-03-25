@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useStore, isEdict } from '../store';
+import { useStore, isEdict, formatLocalDateKey, parseDateInput } from '../store';
 
 export default function BootSequence() {
   const liveStatus = useStore((s) => s.liveStatus);
@@ -8,7 +8,7 @@ export default function BootSequence() {
 
   useEffect(() => {
     const lastOpen = localStorage.getItem('edict_boot_sequence_date');
-    const today = new Date().toISOString().substring(0, 10);
+    const today = formatLocalDateKey(new Date());
     const pref = JSON.parse(localStorage.getItem('edict_boot_sequence_pref') || '{"enabled":true}');
     if (!pref.enabled || lastOpen === today) return;
     localStorage.setItem('edict_boot_sequence_date', today);
@@ -29,7 +29,10 @@ export default function BootSequence() {
   const pending = jjc.filter((t) => !['Done', 'Cancelled'].includes(t.state)).length;
   const done = jjc.filter((t) => t.state === 'Done').length;
   const overdue = jjc.filter(
-    (t) => t.state !== 'Done' && t.state !== 'Cancelled' && t.eta && new Date(t.eta.replace(' ', 'T')) < new Date()
+    (t) => t.state !== 'Done' && t.state !== 'Cancelled' && t.eta && (() => {
+      const eta = parseDateInput(t.eta);
+      return !!eta && eta < new Date();
+    })()
   ).length;
 
   const d = new Date();

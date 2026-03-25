@@ -487,16 +487,99 @@ export function esc(s: string | undefined | null): string {
     .replace(/"/g, '&quot;');
 }
 
+function isValidDate(value: Date): boolean {
+  return !Number.isNaN(value.getTime());
+}
+
+function fromNumericTimestamp(value: number): Date | null {
+  if (!Number.isFinite(value)) return null;
+  const ts = Math.abs(value) < 1e12 ? value * 1000 : value;
+  const date = new Date(ts);
+  return isValidDate(date) ? date : null;
+}
+
+export function parseDateInput(input: string | number | Date | undefined | null): Date | null {
+  if (input == null || input === '') return null;
+  if (input instanceof Date) return isValidDate(input) ? input : null;
+  if (typeof input === 'number') return fromNumericTimestamp(input);
+
+  const value = String(input).trim();
+  if (!value) return null;
+
+  if (/^\d+$/.test(value)) return fromNumericTimestamp(Number(value));
+
+  const localMatch = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/
+  );
+  if (localMatch) {
+    const [, y, m, d, hh = '0', mm = '0', ss = '0', ms = '0'] = localMatch;
+    const date = new Date(
+      Number(y),
+      Number(m) - 1,
+      Number(d),
+      Number(hh),
+      Number(mm),
+      Number(ss),
+      Number(ms.padEnd(3, '0'))
+    );
+    return isValidDate(date) ? date : null;
+  }
+
+  const normalized =
+    value.includes(' ') && !/[zZ]|[+-]\d{2}:\d{2}$/.test(value)
+      ? value.replace(' ', 'T')
+      : value;
+  const date = new Date(normalized);
+  return isValidDate(date) ? date : null;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+export function formatLocalDateKey(input: string | number | Date | undefined | null = new Date()): string {
+  const date = parseDateInput(input);
+  if (!date) return '';
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+export function formatLocalTime(
+  input: string | number | Date | undefined | null,
+  withSeconds = true
+): string {
+  const date = parseDateInput(input);
+  if (!date) return '';
+  const base = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  return withSeconds ? `${base}:${pad2(date.getSeconds())}` : base;
+}
+
+export function formatLocalDateTime(
+  input: string | number | Date | undefined | null,
+  opts: { withSeconds?: boolean } = {}
+): string {
+  const date = parseDateInput(input);
+  if (!date) return '';
+  const datePart = formatLocalDateKey(date);
+  const timePart = formatLocalTime(date, opts.withSeconds !== false);
+  return timePart ? `${datePart} ${timePart}` : datePart;
+}
+
 export function timeAgo(iso: string | undefined): string {
   if (!iso) return '';
   try {
-    const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
-    if (isNaN(d.getTime())) return '';
+    const d = parseDateInput(iso);
+    if (!d) return '';
     const diff = Date.now() - d.getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return '刚刚';
-    if (mins < 60) return mins + '分钟前';
-    const hrs = Math.floor(mins / 60);
+    const absMins = Math.floor(Math.abs(diff) / 60000);
+    if (absMins < 1) return '刚刚';
+    if (diff < 0) {
+      if (absMins < 60) return absMins + '分钟后';
+      const hrs = Math.floor(absMins / 60);
+      if (hrs < 24) return hrs + '小时后';
+      return Math.floor(hrs / 24) + '天后';
+    }
+    if (absMins < 60) return absMins + '分钟前';
+    const hrs = Math.floor(absMins / 60);
     if (hrs < 24) return hrs + '小时前';
     return Math.floor(hrs / 24) + '天前';
   } catch {

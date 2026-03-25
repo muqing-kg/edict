@@ -143,6 +143,10 @@ def main():
             continue
         meta = ID_LABEL[ag_id]
         workspace = str(resolve_workspace(ag_id, cfg=cfg))
+        if 'allowAgents' in ag:
+            allow_agents = ag.get('allowAgents', []) or []
+        else:
+            allow_agents = ag.get('subagents', {}).get('allowAgents', DEFAULT_ALLOW_AGENTS.get(ag_id, []))
         result.append({
             'id': ag_id,
             'label': meta['label'], 'role': meta['role'], 'duty': meta['duty'], 'emoji': meta['emoji'],
@@ -150,7 +154,7 @@ def main():
             'defaultModel': default_model,
             'workspace': workspace,
             'skills': get_skills(workspace),
-            'allowAgents': ag.get('subagents', {}).get('allowAgents', DEFAULT_ALLOW_AGENTS.get(ag_id, [])),
+            'allowAgents': allow_agents,
         })
         seen_ids.add(ag_id)
 

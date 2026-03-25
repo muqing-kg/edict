@@ -1,5 +1,15 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useStore, getPipeStatus, deptColor, stateLabel, STATE_LABEL, displayName, displayText } from '../store';
+import {
+  useStore,
+  getPipeStatus,
+  deptColor,
+  stateLabel,
+  STATE_LABEL,
+  displayName,
+  displayText,
+  formatLocalDateTime,
+  formatLocalTime,
+} from '../store';
 import { api } from '../api';
 import type {
   Task,
@@ -44,12 +54,7 @@ function fmtStalled(sec: number): string {
 
 function fmtActivityTime(ts: number | string | undefined): string {
   if (!ts) return '';
-  if (typeof ts === 'number') {
-    const d = new Date(ts);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-  }
-  if (typeof ts === 'string' && ts.length >= 19) return ts.substring(11, 19);
-  return String(ts).substring(0, 8);
+  return formatLocalTime(ts, true) || String(ts).substring(0, 8);
 }
 
 export default function TaskModal() {
@@ -302,8 +307,8 @@ export default function TaskModal() {
             </div>
             {sched && (
               <div className="sched-line">
-                {sched.lastProgressAt && <span>最近回波 {(sched.lastProgressAt || '').replace('T', ' ').substring(0, 19)}</span>}
-                {sched.lastDispatchAt && <span>最近派遣 {(sched.lastDispatchAt || '').replace('T', ' ').substring(0, 19)}</span>}
+                {sched.lastProgressAt && <span>最近回波 {formatLocalDateTime(sched.lastProgressAt) || sched.lastProgressAt}</span>}
+                {sched.lastDispatchAt && <span>最近派遣 {formatLocalDateTime(sched.lastDispatchAt) || sched.lastDispatchAt}</span>}
                 <span>自动回退 {sched.autoRollback === false ? '关闭' : '开启'}</span>
                 {sched.lastDispatchAgent && <span>目标节点 {AGENT_LABELS[sched.lastDispatchAgent] || displayName(sched.lastDispatchAgent)}</span>}
               </div>
@@ -336,7 +341,7 @@ export default function TaskModal() {
                 <div className="mr-val"><span className={`tag dt-${(task.org || '').replace(/\s/g, '')}`}>{displayName(task.org || '—')}</span></div>
               </div>
               {task.eta && task.eta !== '-' && (
-                <div className="m-row"><div className="mr-label">预计出舱</div><div className="mr-val">{task.eta}</div></div>
+                <div className="m-row"><div className="mr-label">预计出舱</div><div className="mr-val">{formatLocalDateTime(task.eta) || task.eta}</div></div>
               )}
               {task.block && task.block !== '无' && task.block !== '-' && (
                 <div className="m-row"><div className="mr-label" style={{ color: 'var(--danger)' }}>阻塞信号</div><div className="mr-val" style={{ color: 'var(--danger)' }}>{displayText(task.block)}</div></div>
@@ -365,7 +370,7 @@ export default function TaskModal() {
                   const col = deptColor(fl.from || '');
                   return (
                     <div className="fl-item" key={i}>
-                      <div className="fl-time">{fl.at ? fl.at.substring(11, 16) : ''}</div>
+                      <div className="fl-time">{formatLocalTime(fl.at, false)}</div>
                       <div className="fl-dot" style={{ background: col }} />
                       <div className="fl-content">
                         <div className="fl-who">
@@ -458,7 +463,7 @@ function LiveActivitySection({
   const agentParts: string[] = [];
   if (data.agentLabel) agentParts.push(displayText(data.agentLabel));
   if (data.relatedAgents && data.relatedAgents.length > 1) agentParts.push(`${data.relatedAgents.length}个节点`);
-  if (data.lastActive) agentParts.push(`最后信号: ${data.lastActive}`);
+  if (data.lastActive) agentParts.push(`最后信号: ${formatLocalDateTime(data.lastActive) || data.lastActive}`);
 
   // Phase durations
   const phaseDurations = data.phaseDurations || [];
