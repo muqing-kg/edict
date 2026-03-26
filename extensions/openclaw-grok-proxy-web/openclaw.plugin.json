@@ -1,0 +1,45 @@
+{
+  "id": "openclaw-grok-proxy-web",
+  "name": "openclaw-grok-proxy-web",
+  "description": "Third-party Grok/OpenAI-compatible web search provider for OpenClaw with clear phase boundaries for fetch/map/diagnostics takeover.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "description": "OpenAI/xAI-compatible API base URL, for example https://api.example.com/v1"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "API key or secret reference for the Grok-compatible endpoint"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model id to use for web-grounded chat completions"
+          },
+          "timeout": {
+            "type": "number",
+            "minimum": 1,
+            "description": "HTTP timeout in seconds"
+          },
+          "retry": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Retry count after the first attempt"
+          },
+          "cacheTtl": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Cache TTL in minutes"
+          }
+        }
+      }
+    }
+  }
+}

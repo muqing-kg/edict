@@ -1,0 +1,15 @@
+{
+  "name": "openclaw-grok-proxy-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw native web plugin for third-party Grok/OpenAI-compatible web search",
+  "engines": {
+    "node": ">=24"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "plugins": {
+    "allow": [
+      "openclaw-lark",
+      "openclaw-grok-proxy-web"
+    ],
+    "load": {
+      "paths": [
+        "/home/muqing/edict/extensions/openclaw-grok-proxy-web"
+      ]
+    },
+    "entries": {
+      "openclaw-grok-proxy-web": {
+        "enabled": true,
+        "config": {
+          "webSearch": {
+            "baseUrl": "https://<your-grok-compatible-host>/v1",
+            "apiKey": "<secret-or-secret-ref>",
+            "model": "grok-3-search-latest",
+            "timeout": 30,
+            "retry": 1,
+            "cacheTtl": 15
+          }
+        }
+      }
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "provider": "openclaw-grok-proxy-web"
+      }
+    }
+  }
+}
