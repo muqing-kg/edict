@@ -1,0 +1,21 @@
+{
+  "name": "openclaw-grok-proxy-web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw native web plugin for third-party Grok/OpenAI-compatible web search, fetch, and map",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "smoke": "node ./scripts/smoke.mjs",
+    "smoke:compat": "node ./scripts/mock-compat-smoke.mjs",
+    "smoke:fetch-map": "node ./scripts/fetch-map-smoke.mjs",
+    "smoke:provider-chain": "node ./scripts/provider-chain-smoke.mjs"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

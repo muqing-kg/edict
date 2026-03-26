@@ -103,6 +103,26 @@ services:
     command: python -m app.workers.dispatch_worker
     restart: unless-stopped
 
+  notifier:
+    build:
+      context: .
+      dockerfile: edict/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://edict:edict_dev_2024@postgres:5432/edict
+      REDIS_URL: redis://redis:6379/0
+      EDICT_TASKS_FILE: /app/data/tasks_source.json
+      EDICT_NOTIFY_OUTBOX: /tmp/edict_notify_outbox.jsonl
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./data:/app/data
+    command: python -m app.workers.notify_worker
+    restart: unless-stopped
+
   # ── 前端 ──
 
   frontend:

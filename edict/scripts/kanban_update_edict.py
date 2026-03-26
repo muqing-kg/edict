@@ -20,6 +20,12 @@ import re
 import sys
 import pathlib
 
+_BACKEND_DIR = pathlib.Path(__file__).resolve().parents[1] / 'backend'
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+
+from app.services.notify_support import build_route_from_env  # noqa: E402
+
 log = logging.getLogger('kanban')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
 
@@ -101,6 +107,11 @@ def _infer_agent_id():
     return 'system'
 
 
+def _notify_route_meta():
+    route = build_route_from_env(os.environ)
+    return route if route else None
+
+
 # ── API 客户端 ──
 
 def _api_available() -> bool:
@@ -179,6 +190,10 @@ def cmd_create(task_id, title, state, org, owner, remark=None):
 
     if _check_api():
         edict_state = _STATE_TO_EDICT.get(state, state.lower())
+        meta = {'source_task_id': task_id, 'source_state': state}
+        notify_route = _notify_route_meta()
+        if notify_route:
+            meta['notify_route'] = notify_route
         result = _api_post('/api/tasks', {
             'title': title,
             'description': remark or f'下旨：{title}',
@@ -186,7 +201,7 @@ def cmd_create(task_id, title, state, org, owner, remark=None):
             'assignee_org': org,
             'creator': owner,
             'tags': [task_id],
-            'meta': {'source_task_id': task_id, 'source_state': state},
+            'meta': meta,
         })
         if result:
             log.info(f'✅ 创建 {task_id} → Edict {result.get("task_id", "?")} | {title[:30]}')

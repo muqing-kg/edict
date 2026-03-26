@@ -1,0 +1,62 @@
+{
+  "plugins": {
+    "allow": [
+      "openclaw-lark",
+      "openclaw-grok-proxy-web"
+    ],
+    "load": {
+      "paths": [
+        "/home/muqing/edict/extensions/openclaw-grok-proxy-web"
+      ]
+    },
+    "entries": {
+      "openclaw-grok-proxy-web": {
+        "enabled": true,
+        "config": {
+          "webSearch": {
+            "baseUrl": "https://<your-grok-compatible-host>/v1",
+            "apiKey": "<secret-or-secret-ref>",
+            "model": "grok-3-search-latest",
+            "timeout": 30,
+            "retry": 1,
+            "cacheTtl": 15
+          },
+          "tavily": {
+            "apiKey": "<tavily-secret-or-secret-ref>",
+            "baseUrl": "https://api.tavily.com"
+          },
+          "firecrawl": {
+            "apiKey": "<firecrawl-secret-or-secret-ref>",
+            "baseUrl": "https://api.firecrawl.dev"
+          },
+          "fetch": {
+            "timeout": 30,
+            "retry": 1,
+            "cacheTtl": 15,
+            "maxChars": 12000,
+            "tavilyExtractDepth": "basic",
+            "firecrawlOnlyMainContent": true,
+            "firecrawlProxy": "auto"
+          },
+          "map": {
+            "timeout": 60,
+            "retry": 1,
+            "cacheTtl": 15,
+            "limit": 50,
+            "maxDepth": 1,
+            "maxBreadth": 20,
+            "includeSubdomains": true,
+            "allowExternal": false
+          }
+        }
+      }
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "provider": "openclaw-grok-proxy-web"
+      }
+    }
+  }
+}

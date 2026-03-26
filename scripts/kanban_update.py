@@ -29,11 +29,14 @@
   # 🔥 实时进展汇报（Agent 主动调用，频率不限）
   python3 kanban_update.py progress JJC-20260223-012 "正在分析需求，拟定3个子方案" "1.调研技术选型|2.撰写设计文档|3.实现原型"
 """
-import json, pathlib, sys, subprocess, logging, os, re
+import asyncio, json, pathlib, sys, subprocess, logging, os, re
 
 _BASE = pathlib.Path(__file__).resolve().parent.parent
 TASKS_FILE = _BASE / 'data' / 'tasks_source.json'
 REFRESH_SCRIPT = _BASE / 'scripts' / 'refresh_live_data.py'
+_BACKEND_DIR = _BASE / 'edict' / 'backend'
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
 
 log = logging.getLogger('kanban')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
@@ -41,6 +44,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message
 # 文件锁 —— 防止多 Agent 同时读写 tasks_source.json
 from file_lock import atomic_json_read, atomic_json_update  # noqa: E402
 from utils import now_iso  # noqa: E402
+
+_NOTIFY_BACKEND_OK = True
+try:
+    from app.services.event_bus import EventBus, TOPIC_TASK_NOTIFY  # noqa: E402
+    from app.services.notify_support import (  # noqa: E402
+        build_notify_payload,
+        build_route_from_env,
+        ensure_notify_scheduler,
+        merge_route,
+    )
+except Exception as _notify_import_error:  # pragma: no cover - import fallback
+    _NOTIFY_BACKEND_OK = False
+    EventBus = None  # type: ignore[assignment]
+    TOPIC_TASK_NOTIFY = 'task.notify'  # type: ignore[assignment]
+    build_notify_payload = None  # type: ignore[assignment]
+    build_route_from_env = None  # type: ignore[assignment]
+    ensure_notify_scheduler = None  # type: ignore[assignment]
+    merge_route = None  # type: ignore[assignment]
+    log.warning(f'⚠️ notify backend 不可用，脚本将仅更新看板: {_notify_import_error}')
 
 STATE_ORG_MAP = {
     'Yunxiao': '云霄', 'Xingshu': '星枢', 'Lengjing': '棱镜', 'Assigned': '中继',
@@ -108,6 +130,97 @@ _AGENT_LABELS = {
 }
 
 MAX_PROGRESS_LOG = 100  # 单任务最大进展日志条数
+
+
+def _notify_route():
+    if not _NOTIFY_BACKEND_OK or build_route_from_env is None:
+        return {}
+    return build_route_from_env(os.environ)
+
+
+def _ensure_task_notify(task, *, route=None, needs_catchup=None):
+    if not _NOTIFY_BACKEND_OK or ensure_notify_scheduler is None:
+        scheduler = task.get('_scheduler') or {}
+        scheduler.setdefault('notify', {
+            'enabled': True,
+            'route': route or _notify_route(),
+            'pending': [],
+            'recovery': {'needsCatchup': bool(needs_catchup), 'lastRecoveryAt': ''},
+        })
+        task['_scheduler'] = scheduler
+        return scheduler.get('notify', {})
+    scheduler = ensure_notify_scheduler(
+        task.get('_scheduler'),
+        route=route or _notify_route(),
+        stage=str(task.get('state') or ''),
+        needs_catchup=needs_catchup,
+    )
+    task['_scheduler'] = scheduler
+    return scheduler.get('notify', {})
+
+
+def _queue_notify(task, *, kind, message, trigger, stable_part=None, dedupe_window_sec=None):
+    notify = _ensure_task_notify(task, route=_notify_route(), needs_catchup=True)
+    if not _NOTIFY_BACKEND_OK or build_notify_payload is None:
+        payload = {
+            'task_id': task.get('id'),
+            'notify_key': f"{task.get('id')}:{kind}:{stable_part or 'na'}",
+            'kind': kind,
+            'title': task.get('title') or task.get('id'),
+            'state': task.get('state') or '',
+            'org': task.get('org') or '',
+            'message': message,
+            'route': notify.get('route') or {},
+            'dedupe': {'windowSec': dedupe_window_sec or 0, 'fingerprint': ''},
+            'context': {'trigger': trigger},
+            'emittedAt': now_iso(),
+        }
+    else:
+        payload = build_notify_payload(
+            task,
+            kind=kind,
+            message=message,
+            trigger=trigger,
+            route=notify.get('route'),
+            stable_part=stable_part,
+            dedupe_window_sec=dedupe_window_sec,
+        )
+        notify['route'] = merge_route(notify.get('route'), payload.get('route'))
+    pending = list(notify.get('pending') or [])
+    if payload['notify_key'] not in pending:
+        pending.append(payload['notify_key'])
+    notify['pending'] = pending[-20:]
+    notify['recovery']['needsCatchup'] = True
+    task['_scheduler']['notify'] = notify
+    return payload
+
+
+def _publish_notify_payload(payload, producer='kanban_update'):
+    if not _NOTIFY_BACKEND_OK or EventBus is None:
+        return False
+
+    async def _publish():
+        bus = EventBus()
+        await bus.connect()
+        try:
+            await bus.publish(
+                topic=TOPIC_TASK_NOTIFY,
+                trace_id=payload.get('task_id') or payload.get('notify_key') or 'notify',
+                event_type=f"task.notify.{payload.get('kind', 'progress')}",
+                producer=producer,
+                payload=payload,
+                meta={'trigger': (payload.get('context') or {}).get('trigger', '')},
+            )
+        finally:
+            await bus.close()
+
+    try:
+        asyncio.run(_publish())
+        return True
+    except Exception as e:
+        log.warning(f'⚠️ notify 发布失败: {e}')
+        return False
+
 
 def load():
     return atomic_json_read(TASKS_FILE, [])
@@ -233,6 +346,7 @@ def cmd_create(task_id, title, state, org, owner, remark=None):
     actual_org = _canonical_label(STATE_ORG_MAP.get(state, org))
     owner = _canonical_owner(owner)
     clean_remark = _sanitize_remark(remark) if remark else f"下发：{title}"
+    payload_holder = [None]
     def modifier(tasks):
         existing = next((t for t in tasks if t.get('id') == task_id), None)
         if existing:
@@ -242,17 +356,27 @@ def cmd_create(task_id, title, state, org, owner, remark=None):
             if existing.get('state') not in (None, '', 'Inbox', 'Pending'):
                 log.warning(f'任务 {task_id} 已存在 (state={existing["state"]})，将被覆盖')
         tasks = [t for t in tasks if t.get('id') != task_id]
-        tasks.insert(0, {
+        task = {
             "id": task_id, "title": title, "owner": owner,
             "org": actual_org, "state": state,
             "now": clean_remark[:60] if remark else f"已下发，等待{actual_org}接令",
             "eta": "-", "block": "无", "output": "", "ac": "",
             "flow_log": [{"at": now_iso(), "from": "主人", "to": actual_org, "remark": clean_remark}],
             "updatedAt": now_iso()
-        })
+        }
+        payload_holder[0] = _queue_notify(
+            task,
+            kind='ack',
+            message=f"已接令，开始处理：{title}",
+            trigger='task.create',
+            stable_part=state or 'create',
+        )
+        tasks.insert(0, task)
         return tasks
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
+    if payload_holder[0]:
+        _publish_notify_payload(payload_holder[0])
     log.info(f'✅ 创建 {task_id} | {title[:30]} | state={state}')
 
 
@@ -279,6 +403,7 @@ def cmd_state(task_id, new_state, now_text=None):
     """更新任务状态（原子操作，含流转合法性校验）"""
     old_state = [None]
     rejected = [False]
+    payload_holder = [None]
     def modifier(tasks):
         t = find_task(tasks, task_id)
         if not t:
@@ -296,9 +421,29 @@ def cmd_state(task_id, new_state, now_text=None):
         if now_text:
             t['now'] = now_text
         t['updatedAt'] = now_iso()
+        if new_state == 'Blocked':
+            payload_holder[0] = _queue_notify(
+                t,
+                kind='blocked',
+                message=now_text or t.get('block') or '任务已阻塞',
+                trigger='task.state.blocked',
+                stable_part='blocked',
+            )
+        elif new_state == 'Done':
+            payload_holder[0] = _queue_notify(
+                t,
+                kind='done',
+                message=now_text or t.get('output') or '任务已完成',
+                trigger='task.state.done',
+                stable_part='done',
+            )
+        else:
+            _ensure_task_notify(t)
         return tasks
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
+    if payload_holder[0]:
+        _publish_notify_payload(payload_holder[0])
     if rejected[0]:
         log.info(f'❌ {task_id} 状态转换被拒: {old_state[0]} → {new_state}')
     else:
@@ -327,6 +472,7 @@ def cmd_flow(task_id, from_dept, to_dept, remark):
 
 def cmd_done(task_id, output_path='', summary=''):
     """标记任务完成（原子操作）"""
+    payload_holder = [None]
     def modifier(tasks):
         t = find_task(tasks, task_id)
         if not t:
@@ -340,14 +486,24 @@ def cmd_done(task_id, output_path='', summary=''):
             "to": "主人", "remark": f"✅ 完成：{summary or '任务已完成'}"
         })
         t['updatedAt'] = now_iso()
+        payload_holder[0] = _queue_notify(
+            t,
+            kind='done',
+            message=summary or '任务已完成',
+            trigger='task.done',
+            stable_part='done',
+        )
         return tasks
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
+    if payload_holder[0]:
+        _publish_notify_payload(payload_holder[0])
     log.info(f'✅ {task_id} 已完成')
 
 
 def cmd_block(task_id, reason):
     """标记阻塞（原子操作）"""
+    payload_holder = [None]
     def modifier(tasks):
         t = find_task(tasks, task_id)
         if not t:
@@ -356,9 +512,18 @@ def cmd_block(task_id, reason):
         t['state'] = 'Blocked'
         t['block'] = reason
         t['updatedAt'] = now_iso()
+        payload_holder[0] = _queue_notify(
+            t,
+            kind='blocked',
+            message=reason,
+            trigger='task.block',
+            stable_part='blocked',
+        )
         return tasks
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
+    if payload_holder[0]:
+        _publish_notify_payload(payload_holder[0])
     log.warning(f'⚠️ {task_id} 已阻塞: {reason}')
 
 
@@ -413,6 +578,7 @@ def cmd_progress(task_id, now_text, todos_pipe='', tokens=0, cost=0.0, elapsed=0
 
     done_cnt = [0]
     total_cnt = [0]
+    payload_holder = [None]
     def modifier(tasks):
         t = find_task(tasks, task_id)
         if not t:
@@ -443,11 +609,20 @@ def cmd_progress(task_id, now_text, todos_pipe='', tokens=0, cost=0.0, elapsed=0
         if len(t['progress_log']) > MAX_PROGRESS_LOG:
             t['progress_log'] = t['progress_log'][-MAX_PROGRESS_LOG:]
         t['updatedAt'] = at
+        payload_holder[0] = _queue_notify(
+            t,
+            kind='progress',
+            message=clean,
+            trigger='task.progress',
+            dedupe_window_sec=120,
+        )
         done_cnt[0] = sum(1 for td in t.get('todos', []) if td.get('status') == 'completed')
         total_cnt[0] = len(t.get('todos', []))
         return tasks
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
+    if payload_holder[0]:
+        _publish_notify_payload(payload_holder[0])
     res_info = ''
     if tokens or cost or elapsed:
         res_info = f' [res: {tokens}tok/${cost:.4f}/{elapsed}s]'
