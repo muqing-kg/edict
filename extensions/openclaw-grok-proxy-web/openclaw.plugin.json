@@ -1,7 +1,7 @@
 {
   "id": "openclaw-grok-proxy-web",
   "name": "openclaw-grok-proxy-web",
-  "description": "Third-party Grok/OpenAI-compatible web search provider for OpenClaw with clear phase boundaries for fetch/map/diagnostics takeover.",
+  "description": "Third-party Grok/OpenAI-compatible web search provider plus Tavily/Firecrawl-backed grok_fetch and grok_map tooling for OpenClaw.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -37,6 +37,167 @@
             "type": "number",
             "minimum": 0,
             "description": "Cache TTL in minutes"
+          }
+        }
+      },
+      "tavily": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "description": "Tavily API base URL, defaults to https://api.tavily.com"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "Tavily API key or secret reference"
+          },
+          "timeout": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Optional Tavily timeout override in seconds"
+          },
+          "retry": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Optional Tavily retry override"
+          },
+          "cacheTtl": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Optional Tavily cache TTL override in minutes"
+          }
+        }
+      },
+      "firecrawl": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "description": "Firecrawl API base URL, defaults to https://api.firecrawl.dev"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "Firecrawl API key or secret reference"
+          },
+          "timeout": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Optional Firecrawl timeout override in seconds"
+          },
+          "retry": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Optional Firecrawl retry override"
+          },
+          "cacheTtl": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Optional Firecrawl cache TTL override in minutes"
+          }
+        }
+      },
+      "fetch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timeout": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Default grok_fetch timeout in seconds"
+          },
+          "retry": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Default grok_fetch retry count"
+          },
+          "cacheTtl": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Default grok_fetch cache TTL in minutes"
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 100,
+            "description": "Default maximum characters returned by grok_fetch"
+          },
+          "tavilyExtractDepth": {
+            "type": "string",
+            "enum": ["basic", "advanced"],
+            "description": "Default Tavily extract depth"
+          },
+          "tavilyIncludeImages": {
+            "type": "boolean",
+            "description": "Whether Tavily should include image URLs in fetch results"
+          },
+          "firecrawlOnlyMainContent": {
+            "type": "boolean",
+            "description": "Whether Firecrawl fallback should keep only main content"
+          },
+          "firecrawlMaxAgeMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Firecrawl fallback cache age in milliseconds"
+          },
+          "firecrawlProxy": {
+            "type": "string",
+            "enum": ["auto", "basic", "stealth"],
+            "description": "Default Firecrawl fallback proxy mode"
+          },
+          "firecrawlStoreInCache": {
+            "type": "boolean",
+            "description": "Whether Firecrawl fallback should store scrapes in its cache"
+          }
+        }
+      },
+      "map": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timeout": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Default grok_map timeout in seconds"
+          },
+          "retry": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Default grok_map retry count"
+          },
+          "cacheTtl": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Default grok_map cache TTL in minutes"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Default number of mapped URLs to return"
+          },
+          "maxDepth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Default Tavily map depth"
+          },
+          "maxBreadth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Default Tavily map breadth per level"
+          },
+          "includeSubdomains": {
+            "type": "boolean",
+            "description": "Whether subdomains are included by default"
+          },
+          "allowExternal": {
+            "type": "boolean",
+            "description": "Whether Tavily map may include external links by default"
           }
         }
       }

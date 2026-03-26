@@ -1,42 +1,79 @@
 # openclaw-grok-proxy-web
 
-阶段 1：一个 **OpenClaw 原生插件**，先接管 `web_search`，把搜索请求转发到 **第三方 Grok / OpenAI 兼容 chat/completions** 端点。
+一个 **OpenClaw 原生插件**，当前已在同一插件内落地三块能力：
 
-## 现在已落地的内容
+1. `web_search` provider：转发到第三方 Grok / OpenAI 兼容 `chat/completions`
+2. `grok_fetch`：Tavily 主抓取，Firecrawl fallback
+3. `grok_map`：Tavily 主映射，Firecrawl fallback
 
-- 原生插件骨架：`extensions/openclaw-grok-proxy-web/`
+这轮的边界是：**先把自定义 fetch / map 做稳**，为后续“透明接管内置 `web_fetch`”预留接口和配置边界，但本轮不硬改内置逻辑。
+
+---
+
+## 已落地内容
+
+### Phase 1：搜索 provider
+
 - 注册 `registerWebSearchProvider(...)`
-- provider id 固定为：`openclaw-grok-proxy-web`
-- 支持插件配置项：
-  - `baseUrl`
-  - `apiKey`
-  - `model`
-  - `timeout`
-  - `retry`
-  - `cacheTtl`
+- provider id：`openclaw-grok-proxy-web`
+- 支持：`baseUrl / apiKey / model / timeout / retry / cacheTtl`
 - 请求主通路：`{baseUrl}/chat/completions`
   - 优先用 xAI/Grok 风格 `search_parameters`
-  - 若兼容层报字段不支持，再尝试 `web_search_options`
+  - 兼容失败后回落到 `web_search_options`
 - 内置缓存与重试
-- `applySelectionConfig()` 已就绪，可把 `tools.web.search.provider` 切到本 provider
+- `applySelectionConfig()` 可把 `tools.web.search.provider` 切到本 provider
 
-## 插件源码放置位置
+### Phase 2：同插件补 `grok_fetch / grok_map`
 
-当前源码位于：
+#### `grok_fetch`
+
+- 工具名：`grok_fetch`
+- 主链路：**Tavily `/extract`**
+- 兜底：**Firecrawl `/v2/scrape`**
+- 支持：
+  - URL 抓取
+  - `markdown` / `text` 输出
+  - `timeoutSeconds` / `retry` 请求级覆写
+  - `maxChars` 截断
+- 结果会返回：
+  - `provider` / `providerChain`
+  - `fallbackUsed`
+  - `title` / `finalUrl` / `status`
+  - `text`
+  - `truncated` / `rawLength` / `wrappedLength`
+
+#### `grok_map`
+
+- 工具名：`grok_map`
+- 主链路：**Tavily `/map`**
+- 兜底：**Firecrawl `/v2/map`**
+- 支持：
+  - 站点结构发现 / 映射
+  - `limit`
+  - `includeSubdomains`
+  - `depth`
+  - `instructions`（Tavily 聚焦映射）
+- 结果会返回：
+  - `provider` / `providerChain`
+  - `fallbackUsed`
+  - `count`
+  - `links[]`
+
+---
+
+## 插件源码位置
+
+源码位于：
 
 - `/home/muqing/edict/extensions/openclaw-grok-proxy-web`
 
-这是**源码/提交落点**。OpenClaw 运行时建议通过 `plugins.load.paths` 链接加载这一路径，而不是把代码散落到 `~/.openclaw/extensions` 里直接手改。
+推荐通过 `plugins.load.paths` 链接源码目录加载，不要把代码散落到 `~/.openclaw/extensions` 里手改。
 
-> 当前机器为了本地验证，已在插件目录下创建未跟踪的依赖链接：
->
-> - `node_modules/openclaw -> /usr/local/lib/nodejs/node-v24.14.0-linux-x64/lib/node_modules/openclaw`
->
-> 如果后续把插件迁到别的机器/目录，请在插件目录重新安装或链接 `openclaw` 依赖。
+---
 
 ## 如何接入 OpenClaw
 
-### 方案 A：推荐，链接本地源码目录
+### 方案 A：推荐，直接加载本地源码目录
 
 把下面配置加入 `~/.openclaw/openclaw.json`：
 
@@ -63,6 +100,33 @@
             "timeout": 30,
             "retry": 1,
             "cacheTtl": 15
+          },
+          "tavily": {
+            "apiKey": "<tavily-secret-or-secret-ref>",
+            "baseUrl": "https://api.tavily.com"
+          },
+          "firecrawl": {
+            "apiKey": "<firecrawl-secret-or-secret-ref>",
+            "baseUrl": "https://api.firecrawl.dev"
+          },
+          "fetch": {
+            "timeout": 30,
+            "retry": 1,
+            "cacheTtl": 15,
+            "maxChars": 12000,
+            "tavilyExtractDepth": "basic",
+            "firecrawlOnlyMainContent": true,
+            "firecrawlProxy": "auto"
+          },
+          "map": {
+            "timeout": 60,
+            "retry": 1,
+            "cacheTtl": 15,
+            "limit": 50,
+            "maxDepth": 1,
+            "maxBreadth": 20,
+            "includeSubdomains": true,
+            "allowExternal": false
           }
         }
       }
@@ -78,7 +142,7 @@
 }
 ```
 
-> 注意：**配置改完后需要 restart gateway**，OpenClaw 文档明确写了 config 改动需重启生效。
+> 配置改完后需要 **restart gateway** 才会生效。
 
 ### 方案 B：CLI 链接安装
 
@@ -102,18 +166,74 @@ openclaw plugins install -l /home/muqing/edict/extensions/openclaw-grok-proxy-we
 
 写入配置，并重启 gateway。
 
-## 配置说明
+---
 
-插件读取：
+## 配置项说明
 
-- `plugins.entries.openclaw-grok-proxy-web.config.webSearch.baseUrl`
-- `plugins.entries.openclaw-grok-proxy-web.config.webSearch.apiKey`
-- `plugins.entries.openclaw-grok-proxy-web.config.webSearch.model`
-- `plugins.entries.openclaw-grok-proxy-web.config.webSearch.timeout`
-- `plugins.entries.openclaw-grok-proxy-web.config.webSearch.retry`
-- `plugins.entries.openclaw-grok-proxy-web.config.webSearch.cacheTtl`
+### `webSearch`
 
-也支持环境变量兜底：
+搜索 provider 的配置：
+
+- `baseUrl`
+- `apiKey`
+- `model`
+- `timeout`
+- `retry`
+- `cacheTtl`
+
+### `tavily`
+
+供 `grok_fetch / grok_map` 复用：
+
+- `apiKey`
+- `baseUrl`
+- `timeout`（可选）
+- `retry`（可选）
+- `cacheTtl`（可选）
+
+### `firecrawl`
+
+供 fallback 复用：
+
+- `apiKey`
+- `baseUrl`
+- `timeout`（可选）
+- `retry`（可选）
+- `cacheTtl`（可选）
+
+### `fetch`
+
+`grok_fetch` 默认行为：
+
+- `timeout`
+- `retry`
+- `cacheTtl`
+- `maxChars`
+- `tavilyExtractDepth`
+- `tavilyIncludeImages`
+- `firecrawlOnlyMainContent`
+- `firecrawlMaxAgeMs`
+- `firecrawlProxy`
+- `firecrawlStoreInCache`
+
+### `map`
+
+`grok_map` 默认行为：
+
+- `timeout`
+- `retry`
+- `cacheTtl`
+- `limit`
+- `maxDepth`
+- `maxBreadth`
+- `includeSubdomains`
+- `allowExternal`
+
+---
+
+## 环境变量兜底
+
+### 搜索 provider
 
 - `GROK_PROXY_WEB_API_KEY`
 - `XAI_API_KEY`
@@ -123,66 +243,103 @@ openclaw plugins install -l /home/muqing/edict/extensions/openclaw-grok-proxy-we
 - `GROK_PROXY_WEB_RETRY`
 - `GROK_PROXY_WEB_CACHE_TTL`
 
-## 第 1 步验证建议
+### Tavily / Firecrawl
 
-1. 先执行基础 smoke test（验证 provider 注册、默认切换、插件配置读取）：
+- `GROK_PROXY_WEB_TAVILY_API_KEY`
+- `TAVILY_API_KEY`
+- `GROK_PROXY_WEB_TAVILY_BASE_URL`
+- `TAVILY_BASE_URL`
+- `GROK_PROXY_WEB_FIRECRAWL_API_KEY`
+- `FIRECRAWL_API_KEY`
+- `GROK_PROXY_WEB_FIRECRAWL_BASE_URL`
+- `FIRECRAWL_BASE_URL`
+- `GROK_PROXY_WEB_FETCH_TIMEOUT`
+- `GROK_PROXY_WEB_FETCH_RETRY`
+- `GROK_PROXY_WEB_FETCH_CACHE_TTL`
+- `GROK_PROXY_WEB_MAP_TIMEOUT`
+- `GROK_PROXY_WEB_MAP_RETRY`
+- `GROK_PROXY_WEB_MAP_CACHE_TTL`
+
+---
+
+## 工具使用示例
+
+### `grok_fetch`
+
+```json
+{
+  "url": "https://docs.tavily.com/documentation/api-reference/endpoint/map",
+  "extractMode": "markdown",
+  "maxChars": 8000
+}
+```
+
+### `grok_map`
+
+```json
+{
+  "url": "https://docs.tavily.com",
+  "limit": 30,
+  "includeSubdomains": true,
+  "depth": 2
+}
+```
+
+---
+
+## 本地验证
+
+### 1) 基础 smoke
 
 ```bash
 node /home/muqing/edict/extensions/openclaw-grok-proxy-web/scripts/smoke.mjs
 ```
 
-2. 再执行兼容层 smoke（离线验证 `search_parameters -> web_search_options` 双 payload、响应归一化，以及配置注入后会真正走请求链路）：
+验证：
+
+- `web_search` provider 注册
+- `grok_fetch / grok_map` 工具注册
+- 统一配置读取
+- 缺凭证错误路径
+
+### 2) compat + parser smoke
 
 ```bash
 node /home/muqing/edict/extensions/openclaw-grok-proxy-web/scripts/mock-compat-smoke.mjs
 ```
 
-3. 再确认 OpenClaw 已加载该插件并把 `web_search` provider 指到：
+验证：
 
-- `openclaw-grok-proxy-web`
+- `search_parameters -> web_search_options` 双 payload
+- 搜索响应归一化
+- Tavily / Firecrawl mock payload 解析
+- map payload 解析
 
-4. 设置真实 `baseUrl/apiKey/model` 后，重启 gateway，再跑一次 `web_search`。
+### 3) fetch / map smoke
 
-## 后续 2 / 3 / 4 步的边界
+```bash
+node /home/muqing/edict/extensions/openclaw-grok-proxy-web/scripts/fetch-map-smoke.mjs
+```
 
-### 第 2 步：`grok_fetch / grok_map`
+验证：
 
-建议继续放在**同一个插件**内，但与 `web_search` 分层：
+- `grok_fetch / grok_map` 工具对象可执行
+- 配置默认值和帮助错误输出
+- 域名约束与 URL 归一化逻辑
 
-- `src/fetch/`：抓取适配层
-- `src/map/`：站点归一化 / URL 聚合
-- Tavily 主抓取
-- Firecrawl fallback
+### 4) provider chain smoke（推荐）
 
-这样不会把第 1 步的搜索 provider 搅乱。
+```bash
+node /home/muqing/edict/extensions/openclaw-grok-proxy-web/scripts/provider-chain-smoke.mjs
+```
 
-### 第 3 步：诊断工具
+验证：
 
-同插件内新增：
+- Tavily `/extract` 失败后，`grok_fetch` 会切到 Firecrawl `/v2/scrape`
+- `grok_map` 默认优先走 Tavily `/map`
+- 请求体字段与 fallback 链路按预期工作
 
-- `grok_web_diag`
-
-最少输出：
-
-- 搜索主通路是否通
-- fetch 是否通
-- Tavily / Firecrawl 哪一路生效
-- 当前 provider / baseUrl / model（脱敏）
-- 是否命中 fallback
-
-### 第 4 步：透明接管内置 `web_fetch`
-
-不建议在第 1 步直接硬改内置逻辑。
-
-推荐路线：
-
-1. 先把 `grok_fetch` 跑稳
-2. 再做诊断闭环
-3. 最后评估：
-   - 通过新的 fetch provider/hook 透明接管
-   - 或在 OpenClaw 内补 provider 化能力后正式替换内置 `web_fetch`
-
-这样不会把现有抓取能力一次性打碎，也方便回滚。
+---
 
 ## 回滚
 
@@ -191,3 +348,31 @@ node /home/muqing/edict/extensions/openclaw-grok-proxy-web/scripts/mock-compat-s
 - 重启 gateway
 
 即可回退。
+
+---
+
+## 后续 Phase 3 / 4 边界
+
+### Phase 3：诊断工具
+
+建议继续在同插件补：
+
+- `grok_web_diag`
+
+至少输出：
+
+- 当前 `web_search / grok_fetch / grok_map` 的配置摘要（脱敏）
+- Tavily 主链路是否通
+- Firecrawl fallback 是否可用
+- 最近一次 fallback 原因
+- 当前 provider / timeout / retry / cache 命中情况
+
+### Phase 4：透明接管内置 `web_fetch`
+
+建议路线：
+
+1. 先把 `grok_fetch` 线上跑稳
+2. 再补 `grok_web_diag`
+3. 再评估通过 provider/hook 或上游补 fetch provider 化能力，正式替换内置 `web_fetch`
+
+这样可以保留回滚空间，不会一次性把内置抓取链路打碎。
