@@ -125,17 +125,23 @@ openclaw plugins install -l /home/muqing/edict/extensions/openclaw-grok-proxy-we
 
 ## 第 1 步验证建议
 
-1. 先执行 smoke test：
+1. 先执行基础 smoke test（验证 provider 注册、默认切换、插件配置读取）：
 
 ```bash
 node /home/muqing/edict/extensions/openclaw-grok-proxy-web/scripts/smoke.mjs
 ```
 
-2. 再确认 OpenClaw 已加载该插件并把 `web_search` provider 指到：
+2. 再执行兼容层 smoke（离线验证 `search_parameters -> web_search_options` 双 payload、响应归一化，以及配置注入后会真正走请求链路）：
+
+```bash
+node /home/muqing/edict/extensions/openclaw-grok-proxy-web/scripts/mock-compat-smoke.mjs
+```
+
+3. 再确认 OpenClaw 已加载该插件并把 `web_search` provider 指到：
 
 - `openclaw-grok-proxy-web`
 
-3. 设置真实 `baseUrl/apiKey/model` 后，重启 gateway，再跑一次 `web_search`。
+4. 设置真实 `baseUrl/apiKey/model` 后，重启 gateway，再跑一次 `web_search`。
 
 ## 后续 2 / 3 / 4 步的边界
 

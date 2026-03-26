@@ -107,8 +107,7 @@ function resolveChatCompletionsUrl(baseUrl) {
 }
 
 function resolvePluginConfig(config) {
-  const pluginConfig = asRecord(resolveProviderWebSearchPluginConfig(config, PLUGIN_ID));
-  return asRecord(pluginConfig?.webSearch) ?? {};
+  return asRecord(resolveProviderWebSearchPluginConfig(config, PLUGIN_ID)) ?? {};
 }
 
 function resolveMergedSearchConfig(ctx) {
