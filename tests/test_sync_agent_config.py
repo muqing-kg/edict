@@ -1,4 +1,5 @@
 """tests for scripts/sync_agent_config.py"""
+
 import importlib.util
 import json
 import pathlib
@@ -41,7 +42,7 @@ def test_sync_agent_config_accepts_allow_agents_key(tmp_path, monkeypatch):
 
     sync_agent_config.main()
 
-    out = json.loads((data_dir / "agent_config.json").read_text())
+    out = json.loads((data_dir / "agent_config.json").read_text(encoding="utf-8"))
     main_agent = next(agent for agent in out["agents"] if agent["id"] == "main")
     assert main_agent["allowAgents"] == ["xingshu"]
 

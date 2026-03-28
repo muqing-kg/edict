@@ -1,10 +1,5 @@
 {
   "agents": {
-    "defaults": {
-      "model": {
-        "primary": "anthropic/claude-sonnet-4-6"
-      }
-    },
     "list": [
       {"id": "main", "workspace": "/app/.openclaw/workspace", "subagents": {"allowAgents": ["xingshu"]}},
       {"id": "xingshu", "workspace": "/app/.openclaw/workspace-xingshu", "subagents": {"allowAgents": ["lengjing", "zhongji"]}},
@@ -18,6 +13,5 @@
       {"id": "xulie", "workspace": "/app/.openclaw/workspace-xulie", "subagents": {"allowAgents": ["zhongji"]}},
       {"id": "tianyan", "workspace": "/app/.openclaw/workspace-tianyan", "subagents": {"allowAgents": []}}
     ]
-  },
-  "providers": {}
+  }
 }

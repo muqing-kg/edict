@@ -3,11 +3,13 @@
 同步 openclaw.json 中的 agent 配置 → data/agent_config.json
 支持自动发现 agent workspace 下的 Skills 目录
 """
-import json
-import pathlib
 import datetime
+import json
 import logging
+import os
+import pathlib
 from typing import Optional
+
 from file_lock import atomic_json_write
 from utils import load_openclaw_cfg, resolve_workspace
 
@@ -25,11 +27,11 @@ ID_LABEL = {
     'zhongji': {'label': '中继', 'role': '路由与调度中枢', 'duty': '派单、升级与执行协调', 'emoji': '📡'},
     'wenshu': {'label': '文枢', 'role': '文档与表达模块', 'duty': '文档、汇报与输出规范', 'emoji': '📝'},
     'yuanliu': {'label': '源流', 'role': '资源与数据模块', 'duty': '资源、预算、成本与数据分析', 'emoji': '💾'},
-    'weikong':   {'label': '维控', 'role': '执行与安全模块', 'duty': '运维、安全、应急与巡检', 'emoji': '🛡️'},
-    'tanzhen':   {'label': '探针', 'role': '审计与校验模块', 'duty': '合规、审计、测试与质量校验', 'emoji': '⚖️'},
-    'jiwu':   {'label': '机务', 'role': '工程与设施模块', 'duty': '工程实现、自动化与基础设施', 'emoji': '🔧'},
-    'xulie':  {'label': '序列', 'role': '编组与权限模块', 'duty': '人员编组、权限治理与 Agent 管理', 'emoji': '🗂️'},
-    'tianyan':  {'label': '天眼', 'role': '态势与情报模块', 'duty': '每日情报采集与简报', 'emoji': '🛰️'},
+    'weikong': {'label': '维控', 'role': '执行与安全模块', 'duty': '运维、安全、应急与巡检', 'emoji': '🛡️'},
+    'tanzhen': {'label': '探针', 'role': '审计与校验模块', 'duty': '合规、审计、测试与质量校验', 'emoji': '⚖️'},
+    'jiwu': {'label': '机务', 'role': '工程与设施模块', 'duty': '工程实现、自动化与基础设施', 'emoji': '🔧'},
+    'xulie': {'label': '序列', 'role': '编组与权限模块', 'duty': '人员编组、权限治理与 Agent 管理', 'emoji': '🗂️'},
+    'tianyan': {'label': '天眼', 'role': '态势与情报模块', 'duty': '每日情报采集与简报', 'emoji': '🛰️'},
 }
 
 DEFAULT_ALLOW_AGENTS = {
@@ -48,19 +50,19 @@ DEFAULT_ALLOW_AGENTS = {
 
 KNOWN_MODELS = [
     {'id': 'anthropic/claude-sonnet-4-6', 'label': 'Claude Sonnet 4.6', 'provider': 'Anthropic'},
-    {'id': 'anthropic/claude-opus-4-5',   'label': 'Claude Opus 4.5',   'provider': 'Anthropic'},
-    {'id': 'anthropic/claude-haiku-3-5',  'label': 'Claude Haiku 3.5',  'provider': 'Anthropic'},
-    {'id': 'openai/gpt-4o',               'label': 'GPT-4o',            'provider': 'OpenAI'},
-    {'id': 'openai/gpt-4o-mini',          'label': 'GPT-4o Mini',       'provider': 'OpenAI'},
-    {'id': 'openai-codex/gpt-5.3-codex',  'label': 'GPT-5.3 Codex',    'provider': 'OpenAI Codex'},
-    {'id': 'google/gemini-2.0-flash',     'label': 'Gemini 2.0 Flash',  'provider': 'Google'},
-    {'id': 'google/gemini-2.5-pro',       'label': 'Gemini 2.5 Pro',    'provider': 'Google'},
-    {'id': 'copilot/claude-sonnet-4',     'label': 'Claude Sonnet 4',   'provider': 'Copilot'},
-    {'id': 'copilot/claude-opus-4.5',     'label': 'Claude Opus 4.5',   'provider': 'Copilot'},
+    {'id': 'anthropic/claude-opus-4-5', 'label': 'Claude Opus 4.5', 'provider': 'Anthropic'},
+    {'id': 'anthropic/claude-haiku-3-5', 'label': 'Claude Haiku 3.5', 'provider': 'Anthropic'},
+    {'id': 'openai/gpt-4o', 'label': 'GPT-4o', 'provider': 'OpenAI'},
+    {'id': 'openai/gpt-4o-mini', 'label': 'GPT-4o Mini', 'provider': 'OpenAI'},
+    {'id': 'openai-codex/gpt-5.3-codex', 'label': 'GPT-5.3 Codex', 'provider': 'OpenAI Codex'},
+    {'id': 'google/gemini-2.0-flash', 'label': 'Gemini 2.0 Flash', 'provider': 'Google'},
+    {'id': 'google/gemini-2.5-pro', 'label': 'Gemini 2.5 Pro', 'provider': 'Google'},
+    {'id': 'copilot/claude-sonnet-4', 'label': 'Claude Sonnet 4', 'provider': 'Copilot'},
+    {'id': 'copilot/claude-opus-4.5', 'label': 'Claude Opus 4.5', 'provider': 'Copilot'},
     {'id': 'github-copilot/claude-opus-4.6', 'label': 'Claude Opus 4.6', 'provider': 'GitHub Copilot'},
-    {'id': 'copilot/gpt-4o',              'label': 'GPT-4o',            'provider': 'Copilot'},
-    {'id': 'copilot/gemini-2.5-pro',      'label': 'Gemini 2.5 Pro',    'provider': 'Copilot'},
-    {'id': 'copilot/o3-mini',             'label': 'o3-mini',           'provider': 'Copilot'},
+    {'id': 'copilot/gpt-4o', 'label': 'GPT-4o', 'provider': 'Copilot'},
+    {'id': 'copilot/gemini-2.5-pro', 'label': 'Gemini 2.5 Pro', 'provider': 'Copilot'},
+    {'id': 'copilot/o3-mini', 'label': 'o3-mini', 'provider': 'Copilot'},
 ]
 
 
@@ -97,30 +99,25 @@ def get_skills(workspace: str):
 
 
 def _collect_openclaw_models(cfg):
-    """从 openclaw.json 中收集所有已配置的 model id，与 KNOWN_MODELS 合并去重。
-    解决 #127: 自定义 provider 的 model 不在下拉列表中。
-    """
+    """从 openclaw.json 中收集所有已配置的 model id，与 KNOWN_MODELS 合并去重。"""
     known_ids = {m['id'] for m in KNOWN_MODELS}
     extra = []
     agents_cfg = cfg.get('agents', {})
-    # 收集 defaults.model
     dm = normalize_model(agents_cfg.get('defaults', {}).get('model', {}), '')
     if dm and dm not in known_ids:
         extra.append({'id': dm, 'label': dm, 'provider': 'OpenClaw'})
         known_ids.add(dm)
-    # 收集每个 agent 的 model
     for ag in agents_cfg.get('list', []):
-        m = normalize_model(ag.get('model', ''), '')
-        if m and m not in known_ids:
-            extra.append({'id': m, 'label': m, 'provider': 'OpenClaw'})
-            known_ids.add(m)
-    # 收集 providers 中的 model id（如 copilot-proxy、anthropic 等）
+        model_id = normalize_model(ag.get('model', ''), '')
+        if model_id and model_id not in known_ids:
+            extra.append({'id': model_id, 'label': model_id, 'provider': 'OpenClaw'})
+            known_ids.add(model_id)
     for pname, pcfg in cfg.get('providers', {}).items():
         for mid in (pcfg.get('models') or []):
-            mid_str = mid if isinstance(mid, str) else (mid.get('id') or mid.get('name') or '')
-            if mid_str and mid_str not in known_ids:
-                extra.append({'id': mid_str, 'label': mid_str, 'provider': pname})
-                known_ids.add(mid_str)
+            model_id = mid if isinstance(mid, str) else (mid.get('id') or mid.get('name') or '')
+            if model_id and model_id not in known_ids:
+                extra.append({'id': model_id, 'label': model_id, 'provider': pname})
+                known_ids.add(model_id)
     return KNOWN_MODELS + extra
 
 
@@ -149,7 +146,10 @@ def main():
             allow_agents = ag.get('subagents', {}).get('allowAgents', DEFAULT_ALLOW_AGENTS.get(ag_id, []))
         result.append({
             'id': ag_id,
-            'label': meta['label'], 'role': meta['role'], 'duty': meta['duty'], 'emoji': meta['emoji'],
+            'label': meta['label'],
+            'role': meta['role'],
+            'duty': meta['duty'],
+            'emoji': meta['emoji'],
             'model': normalize_model(ag.get('model', default_model), default_model),
             'defaultModel': default_model,
             'workspace': workspace,
@@ -158,14 +158,16 @@ def main():
         })
         seen_ids.add(ag_id)
 
-    # 补充未注册但仍需在 UI 可见的舰载节点。
     for ag_id, meta in ID_LABEL.items():
-        if ag_id in seen_ids or ag_id not in ID_LABEL:
+        if ag_id in seen_ids:
             continue
         workspace = str(resolve_workspace(ag_id, cfg=cfg))
         result.append({
             'id': ag_id,
-            'label': meta['label'], 'role': meta['role'], 'duty': meta['duty'], 'emoji': meta['emoji'],
+            'label': meta['label'],
+            'role': meta['role'],
+            'duty': meta['duty'],
+            'emoji': meta['emoji'],
             'model': default_model,
             'defaultModel': default_model,
             'workspace': workspace,
@@ -174,12 +176,11 @@ def main():
             'isDefaultModel': True,
         })
 
-    # 保留已有的 dispatchChannel 配置 (Fix #139)
     existing_cfg = {}
     cfg_path = DATA / 'agent_config.json'
     if cfg_path.exists():
         try:
-            existing_cfg = json.loads(cfg_path.read_text())
+            existing_cfg = json.loads(cfg_path.read_text(encoding='utf-8'))
         except Exception:
             pass
 
@@ -187,20 +188,17 @@ def main():
         'generatedAt': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'defaultModel': default_model,
         'knownModels': merged_models,
-        'dispatchChannel': existing_cfg.get('dispatchChannel', 'feishu'),
+        'dispatchChannel': existing_cfg.get('dispatchChannel') or os.getenv('DEFAULT_DISPATCH_CHANNEL', 'feishu'),
         'agents': result,
     }
     DATA.mkdir(exist_ok=True)
     atomic_json_write(DATA / 'agent_config.json', payload)
     log.info(f'{len(result)} agents synced')
 
-    # 自动部署 SOUL.md 到 workspace（如果项目里有更新）
     deploy_soul_files()
-    # 同步 scripts/ 到各 workspace（保持 kanban_update.py 等最新）
     sync_scripts_to_workspaces()
 
 
-# 项目 agents/ 目录名 → 运行时 agent_id 映射
 _SOUL_DEPLOY_MAP = {
     'main': 'main',
     'xingshu': 'xingshu',
@@ -266,15 +264,32 @@ def _write_text_if_changed(path: pathlib.Path, text: str) -> bool:
     return True
 
 
+def _sync_script_symlink(src_file: pathlib.Path, dst_file: pathlib.Path) -> bool:
+    """Create a symlink dst_file → src_file (resolved)."""
+    src_resolved = src_file.resolve()
+    try:
+        dst_resolved = dst_file.resolve()
+    except OSError:
+        dst_resolved = None
+    if dst_resolved == src_resolved:
+        return False
+    if dst_file.is_symlink() and dst_resolved == src_resolved:
+        return False
+    if dst_file.exists() or dst_file.is_symlink():
+        dst_file.unlink()
+    os.symlink(src_resolved, dst_file)
+    return True
+
+
 def sync_scripts_to_workspaces():
-    """将项目 scripts/ 目录同步到各 agent workspace（保持 kanban_update.py 等最新）"""
+    """将项目 scripts/ 目录同步到各 agent workspace。"""
     scripts_src = BASE / 'scripts'
     if not scripts_src.is_dir():
         return
     cfg = load_openclaw_cfg()
     synced = 0
-    for proj_name, runtime_id in _SOUL_DEPLOY_MAP.items():
-        if runtime_id == 'main':
+    for _, runtime_id in _SOUL_DEPLOY_MAP.items():
+        if runtime_id == _MAIN_RUNTIME_ID:
             continue
         ws_scripts = resolve_workspace(runtime_id, cfg=cfg) / 'scripts'
         ws_scripts.mkdir(parents=True, exist_ok=True)
@@ -283,18 +298,12 @@ def sync_scripts_to_workspaces():
                 continue
             dst_file = ws_scripts / src_file.name
             try:
-                src_text = src_file.read_bytes()
+                if _sync_script_symlink(src_file, dst_file):
+                    synced += 1
             except Exception:
                 continue
-            try:
-                dst_text = dst_file.read_bytes() if dst_file.exists() else b''
-            except Exception:
-                dst_text = b''
-            if src_text != dst_text:
-                dst_file.write_bytes(src_text)
-                synced += 1
     if synced:
-        log.info(f'{synced} script files synced to workspaces')
+        log.info(f'{synced} script symlinks synced to workspaces')
 
 
 def deploy_soul_files():
@@ -311,12 +320,10 @@ def deploy_soul_files():
         if not src.exists():
             continue
         ws_dst = ws_dir / 'SOUL.md'
-        # 只在内容不同时更新（避免不必要的写入）
         src_text = _read_text(src).replace('__REPO_DIR__', str(BASE))
         src_text = compose_soul_text(src_text, _find_local_soul_override(ws_dir))
         if _write_text_if_changed(ws_dst, src_text):
             deployed += 1
-        # 确保 sessions 目录存在
         sess_dir = pathlib.Path.home() / f'.openclaw/agents/{runtime_id}/sessions'
         sess_dir.mkdir(parents=True, exist_ok=True)
     if deployed:
