@@ -44,3 +44,40 @@ def test_sync_agent_config_accepts_allow_agents_key(tmp_path, monkeypatch):
     out = json.loads((data_dir / "agent_config.json").read_text())
     main_agent = next(agent for agent in out["agents"] if agent["id"] == "main")
     assert main_agent["allowAgents"] == ["xingshu"]
+
+
+def test_deploy_soul_files_keeps_main_and_updates_non_main_without_backups(tmp_path, monkeypatch):
+    sync_agent_config = _load_sync_agent_config()
+
+    agents_dir = tmp_path / "agents"
+    (agents_dir / "main").mkdir(parents=True)
+    (agents_dir / "xingshu").mkdir(parents=True)
+    (agents_dir / "main" / "SOUL.md").write_text("repo main\n", encoding="utf-8")
+    (agents_dir / "xingshu" / "SOUL.md").write_text("repo xingshu\n", encoding="utf-8")
+
+    main_ws = tmp_path / "workspace-main"
+    xingshu_ws = tmp_path / "workspace-xingshu"
+    main_ws.mkdir()
+    xingshu_ws.mkdir()
+    (main_ws / "SOUL.md").write_text("custom main\n", encoding="utf-8")
+    (xingshu_ws / "SOUL.md").write_text("old xingshu\n", encoding="utf-8")
+
+    cfg = {
+        "agents": {
+            "list": [
+                {"id": "main", "workspace": str(main_ws)},
+                {"id": "xingshu", "workspace": str(xingshu_ws)},
+            ]
+        }
+    }
+
+    monkeypatch.setattr(sync_agent_config, "BASE", tmp_path)
+    monkeypatch.setattr(sync_agent_config, "load_openclaw_cfg", lambda: cfg)
+    monkeypatch.setattr(sync_agent_config.pathlib.Path, "home", lambda: tmp_path)
+
+    sync_agent_config.deploy_soul_files()
+
+    assert (main_ws / "SOUL.md").read_text(encoding="utf-8") == "custom main\n"
+    assert (xingshu_ws / "SOUL.md").read_text(encoding="utf-8") == "repo xingshu\n"
+    assert not list(main_ws.glob("*.bak.*"))
+    assert not list(xingshu_ws.glob("*.bak.*"))

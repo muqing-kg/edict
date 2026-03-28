@@ -53,7 +53,7 @@
 </p>
 </details>
 
-> 🐳 **没有 OpenClaw？** 跑一行 `docker run -p 7891:7891 cft0808/edict` 即可体验完整看板 Demo（预置模拟数据）。
+> 🐳 **没有 OpenClaw？** 跑一行 `docker run -p 7891:7891 cft0808/edict-demo` 即可体验完整看板 Demo（预置模拟数据）。
 
 ---
 
@@ -289,7 +289,7 @@ docker compose up
 #### 安装
 
 ```bash
-git clone https://github.com/cft0808/edict.git
+git clone https://github.com/muqing-kg/edict.git
 cd edict
 chmod +x install.sh && ./install.sh
 ```
@@ -309,7 +309,7 @@ chmod +x install.sh && ./install.sh
 
 > ⚠️ **未安装 OpenClaw 时**：`install.sh` / `install.ps1` 不会在本机伪造运行时目录，而是直接提示先完成 OpenClaw 安装与初始化；仓库内的 `agents/<id>/SOUL.md` 仍可先行编辑。
 
-> 💡 **本机长期自定义**：不要直接改 `~/.openclaw/workspace-<id>/SOUL.md`，后续安装/同步会按仓库基线重写。需要长期保留的本机差异，请写到 `~/.openclaw/workspace-<id>/SOUL.local.md`（兼容 `soul.local.md`）；脚本会自动与仓库版合成为最终 `SOUL.md` / `soul.md`。
+> 💡 **本机长期自定义**：不要直接改 `~/.openclaw/workspace-<id>/SOUL.md`，后续安装/同步会按仓库基线重写。需要长期保留的本机差异，请写到 `~/.openclaw/workspace-<id>/SOUL.local.md`；脚本会自动与仓库版合成为最终 `SOUL.md`。`main` 不再参与定时 SOUL 覆盖。
 
 #### 启动
 
@@ -327,6 +327,33 @@ open http://127.0.0.1:7891
 > 💡 **看板即开即用**：`server.py` 默认直接提供 `dashboard/dist/index.html` 这套 React 前端；`dashboard/dashboard.html` 为保留中的旧单文件页，不再作为默认入口。
 
 > 💡 详细教程请看 [Getting Started 指南](docs/getting-started.md)
+
+#### 卸载
+
+如果你要回滚这套 OpenClaw 运行时，先手动停止 `bash scripts/run_loop.sh` 和 `python3 dashboard/server.py` 这些本地进程，再执行：
+
+```bash
+./uninstall.sh
+```
+
+Windows PowerShell：
+
+```powershell
+.\uninstall.ps1
+```
+
+卸载脚本会自动完成：
+- ✅ 删除本系统创建的非 `main` 节点运行时目录
+- ✅ 恢复安装前备份的 `main` 入口 `SOUL.md`
+- ✅ 恢复安装前备份的 `openclaw.json`
+- ✅ 重启 OpenClaw Gateway（如果本机已安装 `openclaw`）
+- ✅ 保留安装前备份目录，便于后续手动检查
+
+> ⚠️ 卸载只回滚 OpenClaw 运行时，不会删除当前仓库目录。
+
+> ⚠️ 如果此前没有通过 `./install.sh` / `./install.ps1` 安装过，缺少 `~/.openclaw/jianzai-install-state.json` 时无法自动回滚。
+
+> 💡 安装前备份目录默认位于 `~/.openclaw/backups/jianzai-install-*`。
 
 ---
 
@@ -490,8 +517,8 @@ edict/
 ### 自定义 Agent
 
 - 仓库基线：编辑 `agents/<id>/SOUL.md`，适合准备提交到仓库、需要跟随上游同步的公共规则。
-- 本机覆盖：编辑 `~/.openclaw/workspace-<id>/SOUL.local.md`（兼容 `soul.local.md`），适合只保留在当前机器、不想被后续同步覆盖的个人化规则。
-- 运行态结果：安装脚本与 `scripts/sync_agent_config.py` 会把两者自动合成为 `~/.openclaw/workspace-<id>/SOUL.md` 和 `soul.md`；如果两者冲突，以本机覆盖层为准。
+- 本机覆盖：编辑 `~/.openclaw/workspace-<id>/SOUL.local.md`，适合只保留在当前机器、不想被后续同步覆盖的个人化规则。
+- 运行态结果：安装脚本会把两者自动合成为 `~/.openclaw/workspace-<id>/SOUL.md`；定时同步只更新非 `main` 节点的 `SOUL.md`。如果两者冲突，以本机覆盖层为准。
 
 ### 增补 Skills（从网上连接）
 
@@ -747,7 +774,7 @@ python3 scripts/skill_manager.py import-skills-hub --agents xingshu
 
 如果这个项目让你会心一笑，请给个 Star ⚔️
 
-[![Star History Chart](https://api.star-history.com/svg?repos=cft0808/edict&type=Date)](https://star-history.com/#cft0808/edict&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=muqing-kg/edict&type=Date)](https://star-history.com/#muqing-kg/edict&Date)
 
 ---
 

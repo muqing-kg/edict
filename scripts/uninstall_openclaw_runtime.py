@@ -4,7 +4,7 @@
 
 目标：
 1. 保留用户原有 main 入口目录。
-2. 恢复安装前备份的 main/SOUL.md 与 main/soul.md。
+2. 恢复安装前备份的 main/SOUL.md。
 3. 删除本系统注册的非 main 节点运行时目录。
 4. 恢复安装前备份的 openclaw.json。
 """
@@ -20,7 +20,6 @@ from utils import OPENCLAW_HOME, OPENCLAW_CFG, default_workspace  # noqa: E402
 
 
 STATE_FILE = OPENCLAW_HOME / 'jianzai-install-state.json'
-SOUL_FILENAMES = ('SOUL.md', 'soul.md')
 
 
 def info(message: str):
@@ -58,13 +57,12 @@ def restore_directory(src: pathlib.Path, dst: pathlib.Path):
 
 def restore_main_soul(backup_workspace: pathlib.Path, main_workspace: pathlib.Path):
     main_workspace.mkdir(parents=True, exist_ok=True)
-    for filename in SOUL_FILENAMES:
-        src = backup_workspace / filename
-        dst = main_workspace / filename
-        if src.exists():
-            shutil.copy2(src, dst)
-        elif dst.exists():
-            dst.unlink()
+    src = backup_workspace / 'SOUL.md'
+    dst = main_workspace / 'SOUL.md'
+    if src.exists():
+        shutil.copy2(src, dst)
+    elif dst.exists():
+        dst.unlink()
 
 
 def main():

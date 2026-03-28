@@ -91,15 +91,11 @@ PY
 compose_soul_content() {
   local base_src="$1"
   local ws_dir="$2"
-  local local_upper="$ws_dir/SOUL.local.md"
-  local local_lower="$ws_dir/soul.local.md"
   local local_src=""
   local escaped_repo_dir=""
 
-  if [ -f "$local_upper" ]; then
-    local_src="$local_upper"
-  elif [ -f "$local_lower" ]; then
-    local_src="$local_lower"
+  if [ -f "$ws_dir/SOUL.local.md" ]; then
+    local_src="$ws_dir/SOUL.local.md"
   fi
 
   escaped_repo_dir=$(printf '%s' "$REPO_DIR" | sed 's/[&|]/\\&/g')
@@ -111,6 +107,44 @@ compose_soul_content() {
     printf '以下内容来自当前机器的 `%s`，用于在同步仓库基线后保留本机自定义；若与前文冲突，以本节为准。\n\n' "$(basename "$local_src")"
     cat "$local_src"
   fi
+}
+
+exact_workspace_child() {
+  local ws_dir="$1"
+  local target_name="$2"
+
+  if [ ! -d "$ws_dir" ]; then
+    return 1
+  fi
+
+  find "$ws_dir" -maxdepth 1 -mindepth 1 -name "$target_name" -print -quit 2>/dev/null
+}
+
+backup_workspace_snapshot() {
+  local agent="$1"
+  local src_dir="$2"
+  local dst_dir="$3"
+
+  if [ ! -d "$src_dir" ]; then
+    return
+  fi
+
+  if [ "$agent" = "main" ]; then
+    cp -R "$src_dir" "$dst_dir"
+    return
+  fi
+
+  mkdir -p "$dst_dir"
+  (
+    shopt -s dotglob nullglob
+    for entry in "$src_dir"/*; do
+      name="$(basename "$entry")"
+      if [ "$name" = "SOUL.md" ]; then
+        continue
+      fi
+      cp -R "$entry" "$dst_dir/"
+    done
+  )
 }
 
 # ── Step 0: 依赖检查 ──────────────────────────────────────────
@@ -133,7 +167,7 @@ check_deps() {
 
   if [ ! -f "$OC_CFG" ]; then
     error "未找到 openclaw.json。请先运行 openclaw 完成初始化。"
-    info "初始化完成后重新运行安装脚本，脚本会把仓库 SOUL.md 与本机 SOUL.local.md 合成为运行态 SOUL.md / soul.md。"
+    info "初始化完成后重新运行安装脚本，脚本会把仓库 SOUL.md 与本机 SOUL.local.md 合成为运行态 SOUL.md。"
     exit 1
   fi
   log "openclaw.json: $OC_CFG"
@@ -153,7 +187,7 @@ backup_existing() {
   for agent in "${MANAGED_AGENTS[@]}"; do
     ws="$(workspace_path_for "$agent")"
     if [ -d "$ws" ]; then
-      cp -R "$ws" "$BACKUP_DIR/workspaces/$agent"
+      backup_workspace_snapshot "$agent" "$ws" "$BACKUP_DIR/workspaces/$agent"
     fi
 
     agent_dir="$OC_HOME/agents/$agent"
@@ -171,33 +205,27 @@ create_workspaces() {
   
   for agent in "${MANAGED_AGENTS[@]}"; do
     ws="$(workspace_path_for "$agent")"
+    upper_soul_entry="$(exact_workspace_child "$ws" "SOUL.md" || true)"
     mkdir -p "$ws"
     if [ "$agent" != "main" ]; then
       mkdir -p "$ws/skills"
     fi
     soul_src="$REPO_DIR/agents/$agent/SOUL.md"
     soul_dst="$ws/SOUL.md"
-    soul_compat_dst="$ws/soul.md"
     if [ -f "$soul_src" ]; then
       ts=$(date +%Y%m%d-%H%M%S)
-      if [ -f "$soul_dst" ]; then
-        # 以 SOUL.md 为主文件，备份后再覆盖
-        cp "$soul_dst" "$soul_dst.bak.$ts"
-        warn "已备份旧 SOUL.md → $soul_dst.bak.$ts"
-      elif [ -f "$soul_compat_dst" ]; then
-        # 发现现有的小写镜像文件时，先备份再统一写回
-        cp "$soul_compat_dst" "$soul_compat_dst.bak.$ts"
-        warn "检测到现有 soul.md，已备份 → $soul_compat_dst.bak.$ts"
+      if [ "$agent" = "main" ] && [ -n "$upper_soul_entry" ]; then
+        # main 的 SOUL.md 保留备份，避免覆盖用户当前入口人格。
+        cp "$upper_soul_entry" "$upper_soul_entry.bak.$ts"
+        warn "已备份旧 SOUL.md → $upper_soul_entry.bak.$ts"
       fi
 
       tmp_soul=$(mktemp)
       compose_soul_content "$soul_src" "$ws" > "$tmp_soul"
       cp "$tmp_soul" "$soul_dst"
-      # 同步写入小写镜像，保证运行态入口一致
-      cp "$tmp_soul" "$soul_compat_dst"
       rm -f "$tmp_soul"
 
-      if [ -f "$ws/SOUL.local.md" ] || [ -f "$ws/soul.local.md" ]; then
+      if [ -f "$ws/SOUL.local.md" ]; then
         info "检测到本机覆盖层，将与仓库基线合成输出: $ws"
       fi
     fi

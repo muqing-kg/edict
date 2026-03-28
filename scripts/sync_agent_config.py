@@ -215,19 +215,26 @@ _SOUL_DEPLOY_MAP = {
     'tianyan': 'tianyan',
 }
 
-_SOUL_LOCAL_FILENAMES = ('SOUL.local.md', 'soul.local.md')
+_SOUL_LOCAL_FILENAME = 'SOUL.local.md'
+_MAIN_RUNTIME_ID = 'main'
 
 
 def _read_text(path: pathlib.Path) -> str:
     return path.read_text(encoding='utf-8', errors='ignore')
 
 
-def _find_local_soul_override(ws_dir: pathlib.Path):
-    for name in _SOUL_LOCAL_FILENAMES:
-        candidate = ws_dir / name
-        if candidate.exists():
-            return candidate
+def _find_exact_workspace_child(ws_dir: pathlib.Path, name: str) -> Optional[pathlib.Path]:
+    try:
+        for child in ws_dir.iterdir():
+            if child.name == name:
+                return child
+    except FileNotFoundError:
+        return None
     return None
+
+
+def _find_local_soul_override(ws_dir: pathlib.Path):
+    return _find_exact_workspace_child(ws_dir, _SOUL_LOCAL_FILENAME)
 
 
 def compose_soul_text(base_text: str, local_override_path: Optional[pathlib.Path]) -> str:
@@ -248,17 +255,6 @@ def compose_soul_text(base_text: str, local_override_path: Optional[pathlib.Path
     )
 
 
-def _backup_before_overwrite(path: pathlib.Path):
-    if not path.exists():
-        return
-    ts = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    backup = path.with_name(f'{path.name}.bak.{ts}')
-    try:
-        backup.write_text(_read_text(path), encoding='utf-8')
-    except Exception as e:
-        log.warning(f'backup failed for {path}: {e}')
-
-
 def _write_text_if_changed(path: pathlib.Path, text: str) -> bool:
     try:
         current = _read_text(path)
@@ -266,10 +262,9 @@ def _write_text_if_changed(path: pathlib.Path, text: str) -> bool:
         current = ''
     if current == text:
         return False
-    if current:
-        _backup_before_overwrite(path)
     path.write_text(text, encoding='utf-8')
     return True
+
 
 def sync_scripts_to_workspaces():
     """将项目 scripts/ 目录同步到各 agent workspace（保持 kanban_update.py 等最新）"""
@@ -303,26 +298,23 @@ def sync_scripts_to_workspaces():
 
 
 def deploy_soul_files():
-    """将项目 agents/xxx/SOUL.md 与本机 SOUL.local.md 合成为运行态文件。"""
+    """将非 main 节点的 SOUL 基线同步到运行态。"""
     agents_dir = BASE / 'agents'
     cfg = load_openclaw_cfg()
     deployed = 0
     for proj_name, runtime_id in _SOUL_DEPLOY_MAP.items():
+        ws_dir = resolve_workspace(runtime_id, cfg=cfg)
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        if runtime_id == _MAIN_RUNTIME_ID:
+            continue
         src = agents_dir / proj_name / 'SOUL.md'
         if not src.exists():
             continue
-        ws_dir = resolve_workspace(runtime_id, cfg=cfg)
         ws_dst = ws_dir / 'SOUL.md'
-        ws_compat_dst = ws_dir / 'soul.md'
-        ws_dir.mkdir(parents=True, exist_ok=True)
         # 只在内容不同时更新（避免不必要的写入）
         src_text = _read_text(src).replace('__REPO_DIR__', str(BASE))
         src_text = compose_soul_text(src_text, _find_local_soul_override(ws_dir))
-        wrote = False
-        for dst in (ws_dst, ws_compat_dst):
-            if _write_text_if_changed(dst, src_text):
-                wrote = True
-        if wrote:
+        if _write_text_if_changed(ws_dst, src_text):
             deployed += 1
         # 确保 sessions 目录存在
         sess_dir = pathlib.Path.home() / f'.openclaw/agents/{runtime_id}/sessions'

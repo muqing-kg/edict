@@ -358,10 +358,10 @@
       "owner": "星枢",
       "org": "星枢",
       "state": "Done",
-      "now": "已完成：项目已推送至 https://github.com/cft0808/edict",
+      "now": "已完成：项目已推送至 https://github.com/muqing-kg/edict",
       "eta": "2026-02-23 22:37",
       "block": "无",
-      "output": "https://github.com/cft0808/edict",
+      "output": "https://github.com/muqing-kg/edict",
       "ac": "看板增强、文档完整、一键安装、GitHub推送",
       "flow_log": [
         {
@@ -386,7 +386,7 @@
           "at": "2026-02-23T15:37:00Z",
           "from": "星枢",
           "to": "主人",
-          "remark": "✅ 回传：https://github.com/cft0808/edict 已上线"
+          "remark": "✅ 回传：https://github.com/muqing-kg/edict 已上线"
         }
       ],
       "updatedAt": "2026-02-23T15:16:22.408230Z",
@@ -1424,7 +1424,7 @@
       "at": "未知",
       "owner": "星枢",
       "task": "舰载系统开源 GitHub 项目",
-      "out": "https://github.com/cft0808/edict",
+      "out": "https://github.com/muqing-kg/edict",
       "qa": "待补成果"
     },
     {

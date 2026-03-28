@@ -25,7 +25,7 @@ openclaw init
 ## 第二步：克隆并安装太空舰载系统
 
 ```bash
-git clone https://github.com/cft0808/edict.git
+git clone https://github.com/muqing-kg/edict.git
 cd edict
 chmod +x install.sh && ./install.sh
 ```
@@ -42,7 +42,7 @@ chmod +x install.sh && ./install.sh
 
 > ⚠️ 如果本机还没有安装或初始化 OpenClaw，`install.sh` / `install.ps1` 会直接提示并退出，不会伪造 `~/.openclaw/` 运行时目录。
 
-> 💡 需要长期保留的本机 Agent 个性化配置，请写到 `~/.openclaw/workspace-<id>/SOUL.local.md`（同时支持 `soul.local.md`）。安装和同步流程会把仓库内 `agents/<id>/SOUL.md` 与本机覆盖层合成为最终运行态 `SOUL.md` / `soul.md`。
+> 💡 需要长期保留的本机 Agent 个性化配置，请写到 `~/.openclaw/workspace-<id>/SOUL.local.md`。安装和同步流程会把仓库内 `agents/<id>/SOUL.md` 与本机覆盖层合成为最终运行态 `SOUL.md`。`main` 不再参与定时 SOUL 覆盖。
 
 ## 第三步：配置消息渠道
 
@@ -196,9 +196,34 @@ openclaw gateway restart
 
 ---
 
+## 如需卸载
+
+如果你要回滚这套 OpenClaw 运行时：
+
+1. 先停止本地运行中的 `bash scripts/run_loop.sh` 和 `python3 dashboard/server.py`
+2. 在仓库根目录执行 `./uninstall.sh`
+3. Windows PowerShell 用户执行 `.\uninstall.ps1`
+
+```bash
+./uninstall.sh
+```
+
+卸载脚本会：
+- 删除本系统创建的非 `main` 节点运行时目录
+- 恢复安装前备份的 `main` 入口 `SOUL.md`
+- 恢复安装前备份的 `openclaw.json`
+- 在可用时重启 OpenClaw Gateway
+- 保留 `~/.openclaw/backups/jianzai-install-*` 备份目录
+
+> ⚠️ 卸载只回滚 OpenClaw 运行时，不会删除当前仓库目录。
+
+> ⚠️ 如果此前没有通过安装脚本落地运行时，缺少 `~/.openclaw/jianzai-install-state.json` 时无法自动回滚。
+
+---
+
 ## 📚 更多资源
 
-- [🏠 项目首页](https://github.com/cft0808/edict)
+- [🏠 项目首页](https://github.com/muqing-kg/edict)
 - [📖 README](../README.md)
 - [🤝 贡献指南](../CONTRIBUTING.md)
 - [💬 OpenClaw 文档](https://docs.openclaw.ai)

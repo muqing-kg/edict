@@ -91,11 +91,50 @@ print(state_path)
 function Get-LocalSoulOverridePath {
     param([string]$WorkspacePath)
 
-    $upper = Join-Path $WorkspacePath "SOUL.local.md"
-    $lower = Join-Path $WorkspacePath "soul.local.md"
-    if (Test-Path $upper) { return $upper }
-    if (Test-Path $lower) { return $lower }
+    $item = Get-ChildItem -LiteralPath $WorkspacePath -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ceq "SOUL.local.md" } |
+        Select-Object -First 1
+    if ($item) { return $item.FullName }
     return $null
+}
+
+function Get-ExactWorkspaceChild {
+    param(
+        [string]$WorkspacePath,
+        [string]$Name
+    )
+
+    if (-not (Test-Path $WorkspacePath)) {
+        return $null
+    }
+
+    return Get-ChildItem -LiteralPath $WorkspacePath -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ceq $Name } |
+        Select-Object -First 1
+}
+
+function Backup-WorkspaceSnapshot {
+    param(
+        [string]$AgentId,
+        [string]$SourcePath,
+        [string]$DestinationPath
+    )
+
+    if (-not (Test-Path $SourcePath)) {
+        return
+    }
+
+    if ($AgentId -eq "main") {
+        Copy-Item -Path $SourcePath -Destination $DestinationPath -Recurse
+        return
+    }
+
+    New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+    Get-ChildItem -LiteralPath $SourcePath -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -cne "SOUL.md" } |
+        ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $DestinationPath -Recurse -Force
+        }
 }
 
 function Get-ComposedSoulContent {
@@ -147,7 +186,7 @@ function Check-Deps {
 
     if (-not (Test-Path $OC_CFG)) {
         Error "未找到 openclaw.json。请先运行 openclaw 完成初始化。"
-        Info "初始化完成后重新运行安装脚本，脚本会把仓库 SOUL.md 与本机 SOUL.local.md 合成为运行态 SOUL.md / soul.md。"
+        Info "初始化完成后重新运行安装脚本，脚本会把仓库 SOUL.md 与本机 SOUL.local.md 合成为运行态 SOUL.md。"
         exit 1
     }
     Log "openclaw.json: $OC_CFG"
@@ -168,7 +207,7 @@ function Backup-Existing {
     foreach ($agent in $MANAGED_AGENTS) {
         $ws = Get-WorkspacePath $agent
         if (Test-Path $ws) {
-            Copy-Item -Path $ws -Destination (Join-Path $script:BACKUP_DIR "workspaces\$agent") -Recurse
+            Backup-WorkspaceSnapshot -AgentId $agent -SourcePath $ws -DestinationPath (Join-Path $script:BACKUP_DIR "workspaces\$agent")
         }
 
         $agentDir = Join-Path $OC_HOME "agents\$agent"
@@ -186,6 +225,7 @@ function Create-Workspaces {
 
     foreach ($agent in $MANAGED_AGENTS) {
         $ws = Get-WorkspacePath $agent
+        $upperSoulItem = Get-ExactWorkspaceChild -WorkspacePath $ws -Name "SOUL.md"
         New-Item -ItemType Directory -Path $ws -Force | Out-Null
         if ($agent -ne "main") {
             New-Item -ItemType Directory -Path (Join-Path $ws "skills") -Force | Out-Null
@@ -193,20 +233,14 @@ function Create-Workspaces {
 
         $soulSrc = Join-Path $REPO_DIR "agents\$agent\SOUL.md"
         $soulDst = Join-Path $ws "SOUL.md"
-        $soulCompatDst = Join-Path $ws "soul.md"
         if (Test-Path $soulSrc) {
             $ts = Get-Date -Format "yyyyMMdd-HHmmss"
-            if (Test-Path $soulDst) {
-                Copy-Item $soulDst "$soulDst.bak.$ts"
-                Warn "已备份旧 SOUL.md → $soulDst.bak.$ts"
-            } elseif (Test-Path $soulCompatDst) {
-                Copy-Item $soulCompatDst "$soulCompatDst.bak.$ts"
-                Warn "检测到现有 soul.md，已备份 → $soulCompatDst.bak.$ts"
+            if ($agent -eq "main" -and $upperSoulItem) {
+                Copy-Item $upperSoulItem.FullName "$($upperSoulItem.FullName).bak.$ts"
+                Warn "已备份旧 SOUL.md → $($upperSoulItem.FullName).bak.$ts"
             }
             $content = Get-ComposedSoulContent -BaseSoulPath $soulSrc -WorkspacePath $ws
             Set-Content -Path $soulDst -Value $content -Encoding UTF8
-            # 同步写入小写镜像，保证运行态入口一致
-            Set-Content -Path $soulCompatDst -Value $content -Encoding UTF8
             if (Get-LocalSoulOverridePath -WorkspacePath $ws) {
                 Info "检测到本机覆盖层，将与仓库基线合成输出: $ws"
             }

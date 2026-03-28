@@ -51,7 +51,7 @@
 </p>
 </details>
 
-> 🐳 **No OpenClaw?** Run `docker run -p 7891:7891 cft0808/edict` to try the full dashboard with simulated data.
+> 🐳 **No OpenClaw?** Run `docker run -p 7891:7891 cft0808/edict-demo` to try the full dashboard with simulated data.
 
 ---
 
@@ -189,7 +189,7 @@ This is why Edict produces more reliable results on complex tasks: nothing reach
 ### Docker
 
 ```bash
-docker run -p 7891:7891 cft0808/edict
+docker run -p 7891:7891 cft0808/edict-demo
 ```
 Open http://localhost:7891
 
@@ -198,7 +198,7 @@ Open http://localhost:7891
 **Prerequisites:** [OpenClaw](https://openclaw.ai) · Python 3.9+ · macOS/Linux
 
 ```bash
-git clone https://github.com/cft0808/edict.git
+git clone https://github.com/muqing-kg/edict.git
 cd edict
 chmod +x install.sh && ./install.sh
 ```
@@ -224,6 +224,33 @@ open http://127.0.0.1:7891
 ```
 
 > 📖 See [Getting Started Guide](docs/getting-started.md) for detailed walkthrough.
+
+### Uninstall
+
+If you want to roll back the OpenClaw runtime installed by this project, stop local processes such as `bash scripts/run_loop.sh` and `python3 dashboard/server.py` first, then run:
+
+```bash
+./uninstall.sh
+```
+
+On Windows PowerShell:
+
+```powershell
+.\uninstall.ps1
+```
+
+The uninstall scripts will:
+- Remove the non-`main` runtime node directories created by this project
+- Restore the backed-up `main` entry `SOUL.md`
+- Restore the backed-up `openclaw.json`
+- Restart the OpenClaw Gateway if `openclaw` is available
+- Keep the pre-install backup directory for manual inspection
+
+> Uninstall only rolls back the OpenClaw runtime. It does not delete this repository directory.
+
+> If you never installed via `./install.sh` or `./install.ps1`, and `~/.openclaw/jianzai-install-state.json` does not exist, the rollback cannot run automatically.
+
+> Pre-install backups are kept under `~/.openclaw/backups/jianzai-install-*`.
 
 ---
 
@@ -432,7 +459,7 @@ What you’ll find:
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=cft0808/edict&type=Date)](https://star-history.com/#cft0808/edict&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=muqing-kg/edict&type=Date)](https://star-history.com/#muqing-kg/edict&Date)
 
 ---
 
