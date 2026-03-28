@@ -626,6 +626,7 @@ curl http://localhost:7891/api/remote-skills-list
   - API 完整参考 + 常见问题
 
 - **[🚀 快速上手指南](docs/getting-started.md)** — 新手入门
+- **[🧾 上游同步记录](docs/upstream-sync-log.md)** — 记录每次吸收上游更新了什么、如何合并、保留了哪些本地定制
 - **[🤝 贡献指南](CONTRIBUTING.md)** — 想参与贡献？从这里开始
 
 ---
