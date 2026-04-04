@@ -51,8 +51,10 @@ ORG_LABEL_ALIASES = {
 }
 
 def rj(p, d):
-    try: return json.loads(pathlib.Path(p).read_text())
-    except Exception: return d
+    try:
+        return json.loads(pathlib.Path(p).read_text(encoding='utf-8'))
+    except Exception:
+        return d
 
 
 # Pre-load openclaw config once (avoid re-reading per agent)

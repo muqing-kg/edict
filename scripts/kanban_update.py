@@ -43,9 +43,39 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message
 from file_lock import atomic_json_read, atomic_json_update  # noqa: E402
 from utils import now_iso  # noqa: E402
 
+
+# ── 从 task.py 动态加载权威状态转换表（Single Source of Truth）──
+def _load_canonical_transitions() -> dict:
+    """从 edict/backend 源码解析状态转换表，无需 import（避免 SQLAlchemy 依赖）。"""
+    task_py = _BASE / "edict" / "backend" / "app" / "models" / "task.py"
+    source = task_py.read_text(encoding="utf-8")
+
+    m = re.search(r"STATE_TRANSITIONS\s*=\s*\{", source)
+    if not m:
+        return None
+    start = m.start()
+    depth = 0
+    end = start
+    for i, ch in enumerate(source[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    block = source[start:end]
+    cleaned = re.sub(r"TaskState\.(\w+)", r'"\1"', block)
+    cleaned = cleaned.replace("STATE_TRANSITIONS =", "_result =")
+    local_ns = {}
+    exec(cleaned, {}, local_ns)  # noqa: S102
+    return local_ns["_result"]
+
+
 STATE_ORG_MAP = {
     'Yunxiao': '云霄', 'Xingshu': '星枢', 'Lengjing': '棱镜', 'Assigned': '中继',
-    'Doing': '执行中', 'Review': '中继', 'Done': '完成', 'Blocked': '阻塞',
+    'Next': '中继', 'Doing': '执行中', 'Review': '中继', 'Done': '完成',
+    'Blocked': '阻塞', 'Cancelled': '已取消', 'Pending': '云霄',
 }
 
 _DISPLAY_TO_CANONICAL = {
@@ -113,13 +143,84 @@ MAX_PROGRESS_LOG = 100  # 单任务最大进展日志条数
 def load():
     return atomic_json_read(TASKS_FILE, [])
 
+_REFRESH_SIGNAL_FILE = _BASE / 'data' / '.refresh_pending'
+
 def _trigger_refresh():
-    """异步触发 live_status 刷新，不阻塞调用方。"""
+    """Debounced refresh — touch 信号文件，由独立 watcher 合并执行。
+
+    替代原来每次 fork subprocess 的方式，避免多 Agent 并发时产生数百个进程。
+    如果 refresh_watcher 未运行，会 fallback 到直接 fork（保持向后兼容）。
+    """
     try:
-        subprocess.Popen(['python3', str(REFRESH_SCRIPT)],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _REFRESH_SIGNAL_FILE.touch(exist_ok=True)
     except Exception:
         pass
+    # Fallback: 如果信号文件 3 秒后仍存在（watcher 没在运行），直接 fork
+    # 注意：这个 fallback 只在非 watcher 部署场景触发
+    if not (_BASE / 'data' / '.refresh_watcher_pid').exists():
+        try:
+            subprocess.Popen(['python3', str(REFRESH_SCRIPT)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+
+# ── 审计日志 ──
+AUDIT_FILE = _BASE / 'data' / 'audit_log.json'
+MAX_AUDIT_LOG = 5000  # 审计日志最大条数
+
+def _append_audit(task_id, agent, action, old_val=None, new_val=None, reason=""):
+    """追加一条审计记录到 data/audit_log.json（原子操作）。"""
+    entry = {
+        "ts": now_iso(),
+        "task": task_id or "",
+        "agent": agent or "",
+        "action": action,
+        "from": old_val,
+        "to": new_val,
+        "reason": reason,
+    }
+    try:
+        def modifier(logs):
+            if logs is None:
+                logs = []
+            logs.append(entry)
+            if len(logs) > MAX_AUDIT_LOG:
+                logs = logs[-MAX_AUDIT_LOG:]
+            return logs
+        atomic_json_update(AUDIT_FILE, modifier, [])
+    except Exception as e:
+        log.warning(f"审计日志写入失败: {e}")
+
+
+# ── 越权检测（Agent 权限策略）──
+AGENT_POLICY = {
+    "main":     {"role": "coordination", "commands": {"create", "state", "flow", "progress", "todo", "memory", "task-memo"}},
+    "xingshu":  {"role": "coordination", "commands": {"state", "flow", "progress", "todo", "memory", "task-memo", "delegate"}},
+    "lengjing": {"role": "coordination", "commands": {"state", "flow", "progress", "todo", "memory", "task-memo"}},
+    "zhongji":  {"role": "coordination", "commands": {"state", "flow", "progress", "todo", "delegate", "memory", "task-memo", "shared-memo"}},
+    "tianyan":  {"role": "coordination", "commands": {"progress", "todo", "memory"}},
+    "yuanliu":  {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
+    "wenshu":   {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
+    "weikong":  {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
+    "tanzhen":  {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
+    "jiwu":     {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
+    "xulie":    {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
+}
+
+def _check_permission(agent_id, cmd):
+    """检查 Agent 是否有权执行该命令。未知 Agent 不拦截（向前兼容）。"""
+    if not agent_id:
+        return  # 无法推断 Agent 身份时不拦截
+    policy = AGENT_POLICY.get(agent_id)
+    if policy is None:
+        return  # 未注册的 Agent 不拦截
+    if cmd not in policy["commands"]:
+        _append_audit(None, agent_id, "permission_denied", cmd, None, f"{agent_id} 越权执行 {cmd}")
+        log.warning(f"⛔ {agent_id} 无权执行 {cmd}（允许: {policy['commands']}）")
+        print(f"[看板] 越权拒绝: {agent_id} 不可执行 {cmd}", flush=True)
+        sys.exit(1)
+
 
 def find_task(tasks, task_id):
     return next((t for t in tasks if t.get('id') == task_id), None)
@@ -255,29 +356,32 @@ def cmd_create(task_id, title, state, org, owner, remark=None):
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
     log.info(f'✅ 创建 {task_id} | {title[:30]} | state={state}')
+    _append_audit(task_id, _infer_agent_id_from_runtime(), 'create', None, state, title)
 
 
-# ── 状态流转合法性校验 ──
-# 只允许文档定义的状态路径:
-# Pending→Yunxiao→Xingshu→Lengjing→Assigned→Doing→Review→Done
-# 额外: Blocked 可双向切换, Cancelled 从任意非终态可达, Next→Doing
-_VALID_TRANSITIONS = {
-    'Pending':   {'Yunxiao', 'Cancelled'},
-    'Yunxiao':     {'Xingshu', 'Cancelled'},
-    'Xingshu':  {'Lengjing', 'Cancelled'},
-    'Lengjing':    {'Assigned', 'Xingshu', 'Cancelled'},   # 打回修订后回星枢
-    'Assigned':  {'Doing', 'Next', 'Blocked', 'Cancelled'},
-    'Next':      {'Doing', 'Blocked', 'Cancelled'},
-    'Doing':     {'Review', 'Blocked', 'Cancelled'},
-    'Review':    {'Done', 'Lengjing', 'Doing', 'Cancelled'},  # 可打回重审/重做
-    'Blocked':   {'Doing', 'Next', 'Assigned', 'Review', 'Cancelled'},  # 解除后回原位
-    'Done':      set(),       # 终态
-    'Cancelled': set(),       # 终态
-}
+# 从 task.py 动态加载（如果 edict 目录存在），否则使用内置 fallback
+_edict_task_path = _BASE / "edict" / "backend" / "app" / "models" / "task.py"
+if _edict_task_path.exists():
+    _VALID_TRANSITIONS = _load_canonical_transitions()
+else:
+    # Fallback：当 edict 目录不存在时使用内置定义（必须与 task.py 保持一致）
+    _VALID_TRANSITIONS = {
+        'Pending':        {'Yunxiao', 'Cancelled'},
+        'Yunxiao':        {'Xingshu', 'Cancelled'},
+        'Xingshu':        {'Lengjing', 'Cancelled', 'Blocked'},
+        'Lengjing':       {'Assigned', 'Xingshu', 'Cancelled'},
+        'Assigned':       {'Doing', 'Next', 'Blocked', 'Cancelled'},
+        'Next':           {'Doing', 'Cancelled', 'Blocked'},
+        'Doing':          {'Review', 'Done', 'Blocked', 'Cancelled'},
+        'Review':         {'Done', 'Xingshu', 'Doing', 'Cancelled'},
+        'Blocked':        {'Yunxiao', 'Xingshu', 'Lengjing', 'Assigned', 'Next', 'Doing', 'Review', 'Cancelled'},
+        'Done':           set(),
+        'Cancelled':      set(),
+    }
 
 
 def cmd_state(task_id, new_state, now_text=None):
-    """更新任务状态（原子操作，含流转合法性校验）"""
+    """更新任务状态（原子操作，含流转合法性校验）。"""
     old_state = [None]
     rejected = [False]
     def modifier(tasks):
@@ -302,8 +406,10 @@ def cmd_state(task_id, new_state, now_text=None):
     _trigger_refresh()
     if rejected[0]:
         log.info(f'❌ {task_id} 状态转换被拒: {old_state[0]} → {new_state}')
+        _append_audit(task_id, _infer_agent_id_from_runtime(), 'state_rejected', old_state[0], new_state, '非法状态转换')
     else:
         log.info(f'✅ {task_id} 状态更新: {old_state[0]} → {new_state}')
+        _append_audit(task_id, _infer_agent_id_from_runtime(), 'state', old_state[0], new_state, now_text or '')
 
 
 def cmd_flow(task_id, from_dept, to_dept, remark):
@@ -329,6 +435,7 @@ def cmd_flow(task_id, from_dept, to_dept, remark):
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
     log.info(f'✅ {task_id} 流转记录: {from_dept} → {to_dept}')
+    _append_audit(task_id, _infer_agent_id_from_runtime(), 'flow', from_dept, to_dept, clean_remark)
 
 
 def cmd_done(task_id, output_path='', summary=''):
@@ -358,6 +465,7 @@ def cmd_done(task_id, output_path='', summary=''):
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
     log.info(f'✅ {task_id} 已完成')
+    _append_audit(task_id, _infer_agent_id_from_runtime(), 'done', None, output_path, summary)
 
 
 def cmd_block(task_id, reason):
@@ -374,6 +482,7 @@ def cmd_block(task_id, reason):
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
     log.warning(f'⚠️ {task_id} 已阻塞: {reason}')
+    _append_audit(task_id, _infer_agent_id_from_runtime(), 'block', None, 'Blocked', reason)
 
 
 def cmd_progress(task_id, now_text, todos_pipe='', tokens=0, cost=0.0, elapsed=0):
@@ -466,17 +575,22 @@ def cmd_progress(task_id, now_text, todos_pipe='', tokens=0, cost=0.0, elapsed=0
     if tokens or cost or elapsed:
         res_info = f' [res: {tokens}tok/${cost:.4f}/{elapsed}s]'
     log.info(f'📡 {task_id} 进展: {clean[:40]}... [{done_cnt[0]}/{total_cnt[0]}]{res_info}')
+    _append_audit(task_id, _infer_agent_id_from_runtime(), 'progress', None, None, clean)
 
 def cmd_todo(task_id, todo_id, title, status='not-started', detail=''):
     """添加或更新子任务 todo（原子操作）
 
     status: not-started / in-progress / completed
     detail: 可选，该子任务的详细产出/说明（Markdown 格式）
+
+    约束：同一时刻最多只有 1 个 in-progress 状态的 todo。
     """
     # 校验 status 值
     if status not in ('not-started', 'in-progress', 'completed'):
         status = 'not-started'
     result_info = [0, 0]
+    rejected = [False]
+    ready_to_close = [False]
     def modifier(tasks):
         t = find_task(tasks, task_id)
         if not t:
@@ -484,6 +598,19 @@ def cmd_todo(task_id, todo_id, title, status='not-started', detail=''):
             return tasks
         if 'todos' not in t:
             t['todos'] = []
+
+        # 单一 in-progress 约束
+        if status == 'in-progress':
+            existing_ip = [td for td in t['todos']
+                           if td.get('status') == 'in-progress' and str(td.get('id')) != str(todo_id)]
+            if existing_ip:
+                log.warning(
+                    f'⚠️ todo #{existing_ip[0]["id"]} 正在执行中，'
+                    f'请先完成或取消后再开始 #{todo_id}'
+                )
+                rejected[0] = True
+                return tasks
+
         existing = next((td for td in t['todos'] if str(td.get('id')) == str(todo_id)), None)
         if existing:
             existing['status'] = status
@@ -499,13 +626,254 @@ def cmd_todo(task_id, todo_id, title, status='not-started', detail=''):
         t['updatedAt'] = now_iso()
         result_info[0] = sum(1 for td in t['todos'] if td.get('status') == 'completed')
         result_info[1] = len(t['todos'])
+        # 所有 todo 完成 → 标记 ready_to_close
+        if result_info[1] > 0 and result_info[0] == result_info[1]:
+            t['ready_to_close'] = True
+            ready_to_close[0] = True
         return tasks
     atomic_json_update(TASKS_FILE, modifier, [])
     _trigger_refresh()
+    if rejected[0]:
+        log.info(f'❌ {task_id} todo #{todo_id} → in-progress 被拒（已有进行中的 todo）')
+        _append_audit(task_id, _infer_agent_id_from_runtime(), 'todo_rejected', todo_id, 'in-progress', 'single in-progress constraint')
+        return
     log.info(f'✅ {task_id} todo [{result_info[0]}/{result_info[1]}]: {todo_id} → {status}')
+    if ready_to_close[0]:
+        log.info(f'🎯 {task_id} 所有子任务完成，ready_to_close=true')
+    _append_audit(task_id, _infer_agent_id_from_runtime(), 'todo', todo_id, status, title)
+
+
+# ── 三级记忆系统 ──
+
+MEMORY_DIR = _BASE / 'data' / 'agent_memory'
+TASK_MEMORY_DIR = _BASE / 'data' / 'task_memory'
+SHARED_MEMORY_FILE = _BASE / 'data' / 'shared_memory.json'
+MAX_AGENT_MEMORIES = 200
+
+
+def cmd_memory(agent_id, mem_type, content, source_task='', tags=''):
+    """写入 Agent 永久记忆。
+
+    mem_type: feedback | experience | preference
+    tags: 逗号分隔的相关性标签
+    """
+    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    mem_file = MEMORY_DIR / f'{agent_id}.json'
+
+    tag_list = [t.strip() for t in tags.split(',') if t.strip()] if tags else []
+    entry = {
+        'id': f'mem_{now_iso().replace(":", "").replace("-", "")[:15]}',
+        'type': mem_type if mem_type in ('feedback', 'experience', 'preference') else 'experience',
+        'content': content,
+        'source_task': source_task,
+        'created_at': now_iso(),
+        'relevance_tags': tag_list,
+        'pinned': False,
+    }
+
+    def modifier(data):
+        if not data:
+            data = {'agent_id': agent_id, 'memories': [], 'stats': {'tasks_handled': 0}}
+        memories = data.get('memories', [])
+        memories.append(entry)
+        # FIFO 淘汰（pinned 除外）
+        if len(memories) > MAX_AGENT_MEMORIES:
+            unpinned = [m for m in memories if not m.get('pinned')]
+            pinned = [m for m in memories if m.get('pinned')]
+            # 淘汰最旧的 unpinned experience 类记忆
+            unpinned.sort(key=lambda m: (m.get('type') == 'feedback', m.get('created_at', '')))
+            memories = pinned + unpinned[-(MAX_AGENT_MEMORIES - len(pinned)):]
+        data['memories'] = memories
+        return data
+
+    atomic_json_update(mem_file, modifier, {})
+    log.info(f'🧠 {agent_id} 记忆写入: [{mem_type}] {content[:40]}...')
+    _append_audit(source_task or 'system', agent_id, 'memory', None, mem_type, content)
+
+
+def cmd_task_memo(task_id, agent_id, decisions, warnings=''):
+    """写入任务上下文记忆（跨 Agent 传递决策链）。
+
+    decisions: 逗号分隔的关键决策
+    warnings: 逗号分隔的风险提示
+    """
+    TASK_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    memo_file = TASK_MEMORY_DIR / f'{task_id}.json'
+
+    decision_list = [d.strip() for d in decisions.split(',') if d.strip()]
+    warning_list = [w.strip() for w in warnings.split(',') if w.strip()] if warnings else []
+
+    # 从 tasks_source.json 获取当前状态
+    tasks = atomic_json_read(TASKS_FILE, [])
+    task = next((t for t in tasks if t.get('id') == task_id), None)
+    phase = task.get('state', '') if task else ''
+
+    chain_entry = {
+        'agent': agent_id,
+        'phase': phase,
+        'key_decisions': decision_list,
+        'warnings': warning_list,
+        'at': now_iso(),
+    }
+
+    def modifier(data):
+        if not data:
+            data = {'task_id': task_id, 'context_chain': []}
+        data.setdefault('context_chain', []).append(chain_entry)
+        return data
+
+    atomic_json_update(memo_file, modifier, {})
+    log.info(f'📝 {task_id} 任务记忆: {agent_id} → {len(decision_list)} 决策')
+    _append_audit(task_id, agent_id, 'task_memo', None, None, f'{len(decision_list)} decisions')
+
+
+def cmd_shared_memo(content, added_by):
+    """写入全局共享记忆（所有 Agent 可读的规则）。"""
+    entry = {
+        'content': content,
+        'added_by': added_by,
+        'at': now_iso(),
+    }
+
+    def modifier(data):
+        if not data:
+            data = {'rules': []}
+        data.setdefault('rules', []).append(entry)
+        return data
+
+    atomic_json_update(SHARED_MEMORY_FILE, modifier, {})
+    log.info(f'🌐 全局记忆写入: {content[:40]}... (by {added_by})')
+    _append_audit('system', added_by, 'shared_memo', None, None, content)
+
+
+# ── 子 Agent 无状态委派 ──
+
+MAX_DELEGATION_DEPTH = 3
+
+
+def _short_uuid():
+    """生成短 UUID 后缀。"""
+    import uuid as _uuid
+    return _uuid.uuid4().hex[:8]
+
+
+def cmd_delegate(task_id, from_agent, to_agent, instruction, return_spec=''):
+    """创建委派子任务，由目标 Agent 独立执行。
+
+    防死锁：记录 delegation_depth 和 delegation_path，超过 3 层或循环委派时拒绝。
+    """
+    # 检查父任务，获取委派链信息
+    tasks = atomic_json_read(TASKS_FILE, [])
+    parent = next((t for t in tasks if t.get('id') == task_id), None)
+    if not parent:
+        log.error(f'父任务 {task_id} 不存在')
+        return
+
+    # 计算委派深度和路径
+    parent_delegation = parent.get('delegation', {})
+    depth = parent_delegation.get('delegation_depth', 0) + 1 if parent_delegation else 1
+    path = parent_delegation.get('delegation_path', [from_agent]) if parent_delegation else [from_agent]
+    path = list(path) + [to_agent]
+
+    # 防死锁检查
+    if depth > MAX_DELEGATION_DEPTH:
+        log.error(f'❌ 委派深度超限 ({depth} > {MAX_DELEGATION_DEPTH})，拒绝委派')
+        _append_audit(task_id, from_agent, 'delegate_rejected', None, None, f'depth={depth} exceeds limit')
+        return
+    if to_agent in path[:-1]:
+        log.error(f'❌ 检测到循环委派 ({" → ".join(path)})，拒绝')
+        _append_audit(task_id, from_agent, 'delegate_rejected', None, None, f'circular: {" → ".join(path)}')
+        return
+
+    sub_task_id = f'{task_id}-sub-{_short_uuid()}'
+    org = STATE_ORG_MAP.get('Doing', to_agent)
+
+    def modifier(tasks):
+        sub_task = {
+            'id': sub_task_id,
+            'parent_task': task_id,
+            'type': 'delegation',
+            'title': f'[委派] {instruction[:40]}',
+            'state': 'Doing',
+            'org': org,
+            'official': from_agent,
+            'now': instruction[:60],
+            'delegation': {
+                'from': from_agent,
+                'to': to_agent,
+                'instruction': instruction,
+                'return_spec': return_spec,
+                'created_at': now_iso(),
+                'timeout_minutes': 30,
+                'delegation_bypass': True,
+                'review_required': True,
+                'delegation_depth': depth,
+                'delegation_path': path,
+            },
+            'flow_log': [{'at': now_iso(), 'from': from_agent, 'to': to_agent, 'remark': f'委派: {instruction[:40]}'}],
+            'todos': [],
+            'updatedAt': now_iso(),
+        }
+        tasks.insert(0, sub_task)
+        return tasks
+
+    atomic_json_update(TASKS_FILE, modifier, [])
+    _trigger_refresh()
+    log.info(f'📋 委派 {sub_task_id}: {from_agent} → {to_agent} (depth={depth})')
+    _append_audit(task_id, from_agent, 'delegate', to_agent, sub_task_id, instruction)
+
+
+def cmd_delegate_result(sub_task_id, result_json):
+    """提交委派子任务结果，回写到父任务的 task_memory。"""
+    tasks = atomic_json_read(TASKS_FILE, [])
+    sub = next((t for t in tasks if t.get('id') == sub_task_id), None)
+    if not sub:
+        log.error(f'子任务 {sub_task_id} 不存在')
+        return
+    parent_id = sub.get('parent_task', '')
+    delegation = sub.get('delegation', {})
+    from_agent = delegation.get('from', '')
+    to_agent = delegation.get('to', '')
+
+    # 标记子任务完成
+    def modifier(tasks):
+        t = find_task(tasks, sub_task_id)
+        if t:
+            t['state'] = 'Done'
+            t['now'] = f'委派结果已提交'
+            t['updatedAt'] = now_iso()
+            t['delegation_result'] = result_json
+        return tasks
+    atomic_json_update(TASKS_FILE, modifier, [])
+
+    # 写入父任务的 task_memory
+    if parent_id:
+        TASK_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+        memo_file = TASK_MEMORY_DIR / f'{parent_id}.json'
+        chain_entry = {
+            'agent': to_agent,
+            'phase': 'delegation_result',
+            'key_decisions': [f'委派结果: {result_json[:200]}'],
+            'warnings': [],
+            'at': now_iso(),
+            'delegation_from': sub_task_id,
+        }
+        def memo_modifier(data):
+            if not data:
+                data = {'task_id': parent_id, 'context_chain': []}
+            data.setdefault('context_chain', []).append(chain_entry)
+            return data
+        atomic_json_update(memo_file, memo_modifier, {})
+
+    _trigger_refresh()
+    log.info(f'✅ 委派结果 {sub_task_id} → 父任务 {parent_id}')
+    _append_audit(parent_id, to_agent, 'delegate_result', sub_task_id, None, result_json[:100])
 
 _CMD_MIN_ARGS = {
-    'create': 6, 'state': 3, 'flow': 5, 'done': 2, 'block': 3, 'todo': 4, 'progress': 3,
+    'create': 6, 'state': 3, 'flow': 5, 'done': 2, 'block': 3,
+    'todo': 4, 'progress': 3,
+    'memory': 4, 'task-memo': 4, 'shared-memo': 3,
+    'delegate': 5, 'delegate-result': 3,
 }
 
 if __name__ == '__main__':
@@ -518,6 +886,8 @@ if __name__ == '__main__':
         print(f'错误："{cmd}" 命令至少需要 {_CMD_MIN_ARGS[cmd]} 个参数，实际 {len(args)} 个')
         print(__doc__)
         sys.exit(1)
+    # 越权检测：推断当前 Agent 身份，校验是否有权执行该命令
+    _check_permission(_infer_agent_id_from_runtime(), cmd)
     if cmd == 'create':
         cmd_create(args[1], args[2], args[3], args[4], args[5], args[6] if len(args)>6 else None)
     elif cmd == 'state':
@@ -567,6 +937,20 @@ if __name__ == '__main__':
             cost=kw.get('cost', 0.0),
             elapsed=kw.get('elapsed', 0),
         )
+    elif cmd == 'memory':
+        cmd_memory(args[1], args[2], args[3],
+                   args[4] if len(args) > 4 else '',
+                   args[5] if len(args) > 5 else '')
+    elif cmd == 'task-memo':
+        cmd_task_memo(args[1], args[2], args[3],
+                      args[4] if len(args) > 4 else '')
+    elif cmd == 'shared-memo':
+        cmd_shared_memo(args[1], args[2])
+    elif cmd == 'delegate':
+        cmd_delegate(args[1], args[2], args[3], args[4],
+                     args[5] if len(args) > 5 else '')
+    elif cmd == 'delegate-result':
+        cmd_delegate_result(args[1], args[2])
     else:
         print(__doc__)
         sys.exit(1)

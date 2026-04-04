@@ -184,6 +184,24 @@ class TestSyncScriptsToWorkspaces:
         assert old_copy.is_symlink(), 'old physical copy should be replaced'
         assert old_copy.resolve() == (project.scripts / 'kanban_update.py').resolve()
 
+    def test_skips_broken_or_external_source_symlinks(self, project):
+        broken = project.scripts / 'agentrec_advisor.py'
+        os.symlink('/no/such/file', broken)
+
+        external_root = project.root.parent / 'external'
+        external_root.mkdir()
+        external_script = external_root / 'linucb_router.py'
+        external_script.write_text('# external tool\n')
+        os.symlink(external_script, project.scripts / 'linucb_router.py')
+
+        sac.sync_scripts_to_workspaces()
+
+        ws = project.home / '.openclaw' / 'workspace-aaa' / 'scripts'
+        for skipped in ('agentrec_advisor.py', 'linucb_router.py'):
+            target = ws / skipped
+            assert not target.exists()
+            assert not target.is_symlink()
+
     def test_file_resolves_to_project_root(self, project):
         """The whole point of #56: __file__ should resolve to project scripts/,
         so Path(__file__).resolve().parent.parent == project root."""

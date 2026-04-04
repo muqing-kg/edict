@@ -2,8 +2,7 @@
 
 核心能力：
 - publish: XADD 发布事件到 stream
-- subscribe: XREADGROUP 消费者组消费，带 ACK 保证
-- 未 ACK 的事件在消费者崩溃后会被自动重新投递
+- subscribe: XREADGROUP 消费者组消费，带 ACK 保证from __future__ import annotations- 未 ACK 的事件在消费者崩溃后会被自动重新投递
 - 解决旧架构 daemon 线程丢失导致派发永久中断的根因
 """
 
@@ -191,6 +190,85 @@ class EventBus:
             return info
         except aioredis.ResponseError:
             return {}
+
+    async def consume_multi(
+        self,
+        topics: list[str],
+        group: str,
+        consumer: str,
+        count: int = 10,
+        block_ms: int = 2000,
+    ) -> list[tuple[str, str, dict]]:
+        """从多个 topic 同时消费事件（单次 XREADGROUP 多 stream）。
+
+        Returns:
+            list of (topic, entry_id, event_dict)
+        """
+        streams = {self._stream_key(t): ">" for t in topics}
+        results = await self.redis.xreadgroup(
+            groupname=group,
+            consumername=consumer,
+            streams=streams,
+            count=count,
+            block=block_ms,
+        )
+        events = []
+        if results:
+            # 建立反向映射: stream_key → topic
+            key_to_topic = {self._stream_key(t): t for t in topics}
+            for stream_key, messages in results:
+                topic = key_to_topic.get(stream_key, stream_key)
+                for entry_id, data in messages:
+                    if "payload" in data:
+                        data["payload"] = json.loads(data["payload"])
+                    if "meta" in data:
+                        data["meta"] = json.loads(data["meta"])
+                    events.append((topic, entry_id, data))
+        return events
+
+    async def publish_batch(
+        self,
+        events: list[dict],
+    ) -> list[str]:
+        """批量发布事件（pipeline 模式，减少 RTT）。
+
+        每个 event dict 须包含: topic, trace_id, event_type, producer, payload, meta(可选)
+        Returns:
+            list of entry_ids
+        """
+        pipe = self.redis.pipeline(transaction=False)
+        for evt in events:
+            topic = evt["topic"]
+            event_data = {
+                "event_id": str(uuid.uuid4()),
+                "trace_id": evt["trace_id"],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "topic": topic,
+                "event_type": evt["event_type"],
+                "producer": evt["producer"],
+                "payload": json.dumps(evt.get("payload", {}), ensure_ascii=False),
+                "meta": json.dumps(evt.get("meta", {}), ensure_ascii=False),
+            }
+            stream_key = self._stream_key(topic)
+            pipe.xadd(stream_key, event_data, maxlen=10000)
+            pipe.publish(f"edict:pubsub:{topic}", json.dumps(event_data, ensure_ascii=False))
+        results = await pipe.execute()
+        # 每个事件产生 2 个 pipeline 命令 (xadd + publish)，entry_id 在偶数位
+        entry_ids = [results[i] for i in range(0, len(results), 2)]
+        log.debug(f"📤 Batch published {len(events)} events")
+        return entry_ids
+
+    async def get_delivery_count(self, topic: str, group: str, entry_id: str) -> int:
+        """获取某条消息的累计投递次数。"""
+        stream_key = self._stream_key(topic)
+        # XPENDING <stream> <group> <start> <end> <count> 返回每条消息的详情
+        pending = await self.redis.xpending_range(
+            stream_key, group, min=entry_id, max=entry_id, count=1
+        )
+        if pending:
+            # 每条 pending 条目格式: {message_id, consumer, idle_time, delivery_count}
+            return pending[0].get("times_delivered", 0)
+        return 0
 
 
 # ── 全局单例 ──

@@ -1,4 +1,5 @@
 """Task 模型 — 舰载系统任务核心表。"""
+from __future__ import annotations
 
 import enum
 import uuid
@@ -35,16 +36,18 @@ STATE_TRANSITIONS = {
     TaskState.Xingshu: {TaskState.Lengjing, TaskState.Cancelled, TaskState.Blocked},
     TaskState.Lengjing: {TaskState.Assigned, TaskState.Xingshu, TaskState.Cancelled},
     TaskState.Assigned: {TaskState.Doing, TaskState.Next, TaskState.Cancelled, TaskState.Blocked},
-    TaskState.Next: {TaskState.Doing, TaskState.Cancelled},
+    TaskState.Next: {TaskState.Doing, TaskState.Cancelled, TaskState.Blocked},
     TaskState.Doing: {TaskState.Review, TaskState.Done, TaskState.Blocked, TaskState.Cancelled},
-    TaskState.Review: {TaskState.Done, TaskState.Doing, TaskState.Cancelled},
+    TaskState.Review: {TaskState.Done, TaskState.Xingshu, TaskState.Doing, TaskState.Cancelled},
     TaskState.Blocked: {
         TaskState.Yunxiao,
         TaskState.Xingshu,
         TaskState.Lengjing,
         TaskState.Assigned,
-        TaskState.Doing,
         TaskState.Next,
+        TaskState.Doing,
+        TaskState.Review,
+        TaskState.Cancelled,
     },
 }
 
@@ -54,6 +57,7 @@ STATE_AGENT_MAP = {
     TaskState.Lengjing: "lengjing",
     TaskState.Assigned: "zhongji",
     TaskState.Review: "zhongji",
+    TaskState.Pending: "xingshu",
 }
 
 ORG_AGENT_MAP = {

@@ -16,6 +16,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+# JWT 认证模块
+from auth import init as auth_init, requires_auth, extract_token, verify_token, \
+    is_enabled as auth_enabled, is_configured as auth_configured, \
+    setup_password, verify_password, create_token
+
 # 引入文件锁工具，确保与其他脚本并发安全
 scripts_dir = str(pathlib.Path(__file__).parent.parent / 'scripts')
 sys.path.insert(0, scripts_dir)
@@ -2263,8 +2268,25 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _check_auth(self):
+        """检查认证，未通过返回 True（已发送 401 响应）。"""
+        p = urlparse(self.path).path.rstrip('/')
+        if not requires_auth(p):
+            return False
+        token = extract_token(self.headers)
+        if not token or not verify_token(token):
+            self.send_json({'ok': False, 'error': '未登录或会话已过期'}, 401)
+            return True
+        return False
+
     def do_GET(self):
         p = urlparse(self.path).path.rstrip('/')
+        # 认证状态端点（公开）
+        if p == '/api/auth/status':
+            self.send_json({'enabled': auth_enabled(), 'configured': auth_configured()})
+            return
+        if self._check_auth():
+            return
         if p in ('', '/dashboard', '/dashboard.html'):
             self.send_file(DIST / 'index.html')
         elif p == '/healthz':
@@ -2393,6 +2415,42 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(raw) if raw else {}
         except Exception:
             self.send_json({'ok': False, 'error': 'invalid JSON'}, 400)
+            return
+
+        # ── 认证端点（公开） ──
+        if p == '/api/auth/setup':
+            pw = body.get('password', '')
+            if not isinstance(pw, str) or not pw:
+                self.send_json({'ok': False, 'error': '请提供密码'}, 400)
+                return
+            self.send_json(setup_password(pw))
+            return
+        if p == '/api/auth/login':
+            pw = body.get('password', '')
+            if not isinstance(pw, str) or not pw:
+                self.send_json({'ok': False, 'error': '请提供密码'}, 400)
+                return
+            if verify_password(pw):
+                token = create_token()
+                resp = {'ok': True, 'token': token}
+                # 同时设置 HttpOnly cookie
+                try:
+                    body_bytes = json.dumps(resp, ensure_ascii=False).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_header('Content-Length', str(len(body_bytes)))
+                    self.send_header('Set-Cookie', f'edict_token={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400')
+                    cors_headers(self)
+                    self.end_headers()
+                    self.wfile.write(body_bytes)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+            else:
+                self.send_json({'ok': False, 'error': '密码错误'}, 401)
+            return
+
+        # ── 认证检查 ──
+        if self._check_auth():
             return
 
         if p == '/api/morning-config':
@@ -2730,6 +2788,12 @@ def main():
     server = HTTPServer((args.host, args.port), Handler)
     log.info(f'舰载系统总控台启动 → http://{args.host}:{args.port}')
     print(f'   按 Ctrl+C 停止')
+
+    auth_init(DATA)
+    if auth_enabled():
+        log.info('🔒 JWT 认证已启用')
+    else:
+        log.info('🔓 认证未配置，所有 API 公开访问（POST /api/auth/setup 设置密码）')
 
     migrate_notification_config()
 

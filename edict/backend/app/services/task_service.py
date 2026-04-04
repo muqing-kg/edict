@@ -1,9 +1,11 @@
 """任务服务层 — CRUD + 状态机逻辑。
 
 所有业务规则集中在此：
-- 创建任务 → 发布 task.created 事件
-- 状态流转 → 校验合法性 + 发布状态事件
+- 创建任务 → 事件写入 outbox 表（同一事务）
+- 状态流转 → 校验合法性 + SELECT FOR UPDATE 防并发 + outbox 事件
 - 查询、过滤、聚合
+
+事件投递由 OutboxRelay worker 异步完成，保证 DB/Event 原子一致。
 """
 
 import logging
@@ -14,9 +16,9 @@ from typing import Any
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..models.outbox import OutboxEvent
 from ..models.task import Task, TaskState, STATE_TRANSITIONS, TERMINAL_STATES
 from .event_bus import (
-    EventBus,
     TOPIC_TASK_CREATED,
     TOPIC_TASK_STATUS,
     TOPIC_TASK_COMPLETED,
@@ -27,8 +29,9 @@ log = logging.getLogger("edict.task_service")
 
 
 class TaskService:
-    def __init__(self, db: AsyncSession, event_bus: EventBus):
+    def __init__(self, db: AsyncSession, event_bus=None):
         self.db = db
+        # event_bus 保留用于 request_dispatch 等直接发布场景
         self.bus = event_bus
 
     # ── 创建 ──
@@ -44,7 +47,7 @@ class TaskService:
         initial_state: TaskState = TaskState.Yunxiao,
         meta: dict | None = None,
     ) -> Task:
-        """创建任务并发布 task.created 事件。"""
+        """创建任务，事件写入 outbox 表（同一事务原子提交）。"""
         now = datetime.now(timezone.utc)
         trace_id = str(uuid.uuid4())
         target_org = Task.org_for_state(initial_state, assignee_org)
@@ -80,8 +83,8 @@ class TaskService:
         self.db.add(task)
         await self.db.flush()
 
-        # 发布事件
-        await self.bus.publish(
+        # 事件写入 outbox — 与 task 同一事务，原子提交
+        outbox = OutboxEvent(
             topic=TOPIC_TASK_CREATED,
             trace_id=trace_id,
             event_type="task.created",
@@ -94,6 +97,7 @@ class TaskService:
                 "assignee_org": assignee_org,
             },
         )
+        self.db.add(outbox)
 
         await self.db.commit()
         log.info(f"Created task {task.task_id}: {title} [{initial_state.value}]")
@@ -108,8 +112,14 @@ class TaskService:
         agent: str = "system",
         reason: str = "",
     ) -> Task:
-        """执行状态流转，校验合法性。"""
-        task = await self._get_task(task_id)
+        """执行状态流转。SELECT FOR UPDATE 防止并发 flow_log 丢失。"""
+        # 行级排他锁 — 串行化同一任务的并发写入
+        stmt = select(Task).where(Task.task_id == task_id).with_for_update()
+        result = await self.db.execute(stmt)
+        task = result.scalar_one_or_none()
+        if task is None:
+            raise ValueError(f"Task not found: {task_id}")
+
         old_state = task.state
 
         # 校验合法流转
@@ -126,7 +136,7 @@ class TaskService:
             task.now = reason
         task.updated_at = datetime.now(timezone.utc)
 
-        # 记入 flow_log
+        # 在行锁保护下安全追加 flow_log
         flow_entry = {
             "from": old_state.value,
             "to": new_state.value,
@@ -138,9 +148,9 @@ class TaskService:
             task.flow_log = []
         task.flow_log = [*task.flow_log, flow_entry]
 
-        # 发布状态变更事件
+        # 事件写入 outbox（同一事务）
         topic = TOPIC_TASK_COMPLETED if new_state in TERMINAL_STATES else TOPIC_TASK_STATUS
-        await self.bus.publish(
+        outbox = OutboxEvent(
             topic=topic,
             trace_id=str(task.trace_id),
             event_type=f"task.state.{new_state.value}",
@@ -153,6 +163,7 @@ class TaskService:
                 "assignee_org": task.assignee_org,
             },
         )
+        self.db.add(outbox)
 
         await self.db.commit()
         log.info(f"Task {task_id} state: {old_state.value} → {new_state.value} by {agent}")
@@ -166,9 +177,9 @@ class TaskService:
         target_agent: str,
         message: str = "",
     ):
-        """发布 task.dispatch 事件，由 DispatchWorker 消费执行。"""
+        """发布 task.dispatch 事件到 outbox，由 OutboxRelay 投递后 DispatchWorker 消费。"""
         task = await self._get_task(task_id)
-        await self.bus.publish(
+        outbox = OutboxEvent(
             topic=TOPIC_TASK_DISPATCH,
             trace_id=str(task.trace_id),
             event_type="task.dispatch.request",
@@ -180,6 +191,8 @@ class TaskService:
                 "state": task.state.value,
             },
         )
+        self.db.add(outbox)
+        await self.db.commit()
         log.info(f"Dispatch requested: task {task_id} → agent {target_agent}")
 
     # ── 进度/备注更新 ──

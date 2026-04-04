@@ -93,3 +93,88 @@ pwsh -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw 'install
 
 附注：
 - 当前环境缺少 `pytest` 与 `sqlalchemy`，因此没有跑完整 Python 测试套件与后端运行级验证。
+
+## 2026-04-04 · 同步 `cft0808/main`
+
+- 上游来源：`https://github.com/cft0808/edict`
+- 上游基准提交：`f6af76b`
+- 本地保护分支：`backup_pre_cft0808_merge_20260404_1`
+
+### 本次吸收的上游内容
+
+- 基础设施与发布：
+  - 新增 `docker-publish` 工作流
+  - 吸收 `edict.service`、`edict.sh`、`start.sh` 等 systemd / 启动脚本
+  - 同步 `Dockerfile`、CI、stale 等仓库治理更新
+- 看板与鉴权：
+  - 吸收 `dashboard/auth.py` 与 `dashboard/server.py` 的鉴权、事件与前端打包产物更新
+  - 保留本地 `bridge_discuss` 运行链，只补充上游兼容能力
+- 后端运行链：
+  - 吸收 `EventBus`、`AuditLog`、`Outbox`、`outbox_relay` 与任务事件链路增强
+  - 吸收 orchestrator / dispatch 的多 topic 消费、并发分桶、记忆注入、注入检测、停滞升级框架
+  - 吸收 `refresh_watcher.py` 与 `tests/test_state_machine_consistency.py`
+- 文档：
+  - 更新 `README.md`、`README_EN.md`、`README_JA.md`
+  - 更新 `docs/task-dispatch-architecture.md`
+
+### 本次保留的本地定制
+
+- `main` 的 `SOUL.md` 仍不参与定时同步覆盖
+- 项目内只认 `SOUL.md` 与 `SOUL.local.md`
+- 只有 `main` 在安装覆盖前备份 `SOUL.md`
+- 卸载时只恢复 `main/SOUL.md`
+- 保留本地“云霄 / 星枢 / 棱镜 / 中继”命名体系，不引入 `Taizi / Zhongshu / Menxia / PendingConfirm`
+- 保留 `source_tasks.py` 作为 source-id 兼容入口，不接入上游重复的 `edict/backend/app/api/legacy.py`
+
+### 重点冲突处理
+
+- 以本地舰载状态机为权威，重写并校正：
+  - `edict/backend/app/models/task.py`
+  - `edict/backend/app/workers/orchestrator_worker.py`
+  - `edict/backend/app/workers/dispatch_worker.py`
+  - `scripts/kanban_update.py`
+- 保留本地 SOUL / workspace 同步规则，同时吸收上游模型收集逻辑：
+  - `scripts/sync_agent_config.py`
+- 文档侧保留本地术语与架构叙事，同时吸收上游新增的 auth / EventBus / Outbox / DAG / systemd 说明：
+  - `README.md`
+  - `README_EN.md`
+  - `docs/task-dispatch-architecture.md`
+- 上游新增的 `scripts/agentrec_advisor.py` 与 `scripts/linucb_router.py` 实际为指向作者本机绝对路径的无效 symlink：
+  - 本次未吸收这两个坏链接
+  - 同时为 `sync_scripts_to_workspaces()` 增加保护，后续若再出现 broken / external symlink，将直接跳过而不是同步进各 workspace
+
+### 验证结果
+
+执行通过：
+
+```bash
+git diff --name-only --diff-filter=U
+python3 -m py_compile \
+  dashboard/auth.py \
+  dashboard/server.py \
+  scripts/kanban_update.py \
+  scripts/refresh_watcher.py \
+  scripts/sync_agent_config.py \
+  scripts/sync_nodes_stats.py \
+  tests/test_state_machine_consistency.py \
+  tests/test_sync_symlinks.py \
+  edict/backend/app/api/events.py \
+  edict/backend/app/api/tasks.py \
+  edict/backend/app/config.py \
+  edict/backend/app/models/__init__.py \
+  edict/backend/app/models/audit.py \
+  edict/backend/app/models/outbox.py \
+  edict/backend/app/models/task.py \
+  edict/backend/app/services/event_bus.py \
+  edict/backend/app/services/task_service.py \
+  edict/backend/app/workers/dispatch_worker.py \
+  edict/backend/app/workers/orchestrator_worker.py \
+  edict/backend/app/workers/outbox_relay.py
+bash -n install.sh uninstall.sh start.sh edict.sh
+pwsh -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw 'install.ps1')); 'install-ps1-ok'"
+pwsh -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw 'uninstall.ps1')); 'uninstall-ps1-ok'"
+```
+
+附注：
+- 本次 merge 期间已确认不存在未解决冲突。
+- 当前环境缺少 `pytest`，因此没有运行测试套件。

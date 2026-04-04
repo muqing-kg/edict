@@ -107,6 +107,20 @@ def _collect_openclaw_models(cfg):
     if dm and dm not in known_ids:
         extra.append({'id': dm, 'label': dm, 'provider': 'OpenClaw'})
         known_ids.add(dm)
+
+    # 收集 defaults.models 中显式启用的模型
+    # 收集 defaults.models 中的所有模型（OpenClaw 默认启用的模型列表）
+    defaults_models = agents_cfg.get('defaults', {}).get('models', {})
+    if isinstance(defaults_models, dict):
+        for model_id in defaults_models.keys():
+            if model_id and model_id not in known_ids:
+                provider = 'OpenClaw'
+                if '/' in model_id:
+                    provider = model_id.split('/')[0]
+                extra.append({'id': model_id, 'label': model_id, 'provider': provider})
+                known_ids.add(model_id)
+
+    # 收集每个 agent 的 model
     for ag in agents_cfg.get('list', []):
         model_id = normalize_model(ag.get('model', ''), '')
         if model_id and model_id not in known_ids:
@@ -188,7 +202,7 @@ def main():
         'generatedAt': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'defaultModel': default_model,
         'knownModels': merged_models,
-        'dispatchChannel': existing_cfg.get('dispatchChannel') or os.getenv('DEFAULT_DISPATCH_CHANNEL', 'feishu'),
+        'dispatchChannel': existing_cfg.get('dispatchChannel') or os.getenv('DEFAULT_DISPATCH_CHANNEL', ''),
         'agents': result,
     }
     DATA.mkdir(exist_ok=True)
@@ -281,11 +295,35 @@ def _sync_script_symlink(src_file: pathlib.Path, dst_file: pathlib.Path) -> bool
     return True
 
 
+def _is_syncable_script_source(src_file: pathlib.Path, scripts_root: pathlib.Path) -> bool:
+    """只同步可解析且仍位于项目 scripts/ 下的源脚本。"""
+    if not src_file.is_symlink():
+        return True
+
+    try:
+        src_resolved = src_file.resolve(strict=True)
+    except FileNotFoundError:
+        try:
+            target = os.readlink(src_file)
+        except OSError:
+            target = '<unresolved>'
+        log.warning(f'skip broken script symlink: {src_file} -> {target}')
+        return False
+
+    try:
+        src_resolved.relative_to(scripts_root)
+    except ValueError:
+        log.warning(f'skip external script symlink: {src_file} -> {src_resolved}')
+        return False
+    return True
+
+
 def sync_scripts_to_workspaces():
     """将项目 scripts/ 目录同步到各 agent workspace。"""
     scripts_src = BASE / 'scripts'
     if not scripts_src.is_dir():
         return
+    scripts_root = scripts_src.resolve()
     cfg = load_openclaw_cfg()
     synced = 0
     for _, runtime_id in _SOUL_DEPLOY_MAP.items():
@@ -295,6 +333,8 @@ def sync_scripts_to_workspaces():
         ws_scripts.mkdir(parents=True, exist_ok=True)
         for src_file in scripts_src.iterdir():
             if src_file.suffix not in ('.py', '.sh') or src_file.stem.startswith('__'):
+                continue
+            if not _is_syncable_script_source(src_file, scripts_root):
                 continue
             dst_file = ws_scripts / src_file.name
             try:

@@ -11,6 +11,7 @@
   - 命运骰子：随机事件
   - 每个节点保持各自的角色性格和表达风格
 """
+from __future__ import annotations
 
 import json
 import logging
