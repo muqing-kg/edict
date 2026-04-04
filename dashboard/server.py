@@ -647,7 +647,7 @@ _JUNK_TITLES = {
 }
 
 
-def handle_create_task(title, org='星枢', owner='星枢', priority='normal', template_id='', params=None, target_dept=''):
+def handle_create_task(title, org='云霄', owner='云霄', priority='normal', template_id='', params=None, target_dept=''):
     """从看板创建新任务（指令模板下发）。"""
     if not title or not title.strip():
         return {'ok': False, 'error': '任务标题不能为空'}
@@ -2643,8 +2643,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == '/api/create-task':
             title = body.get('title', '').strip()
-            org = body.get('org', '星枢').strip()
-            owner = body.get('owner', '星枢').strip()
+            org = body.get('org', '云霄').strip()
+            owner = body.get('owner', '云霄').strip()
             priority = body.get('priority', 'normal').strip()
             template_id = body.get('templateId', '')
             params = body.get('params', {})

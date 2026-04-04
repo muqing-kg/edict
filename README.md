@@ -345,7 +345,7 @@ bash edict.sh stop     # 停止
 
 </details>
 
-> 💡 **看板即开即用**：`server.py` 默认优先提供 `dashboard/dist/index.html` 这套 React 前端；`dashboard/dashboard.html` 作为保留中的旧单文件页继续兼容。
+> 💡 **看板即开即用**：`server.py` 默认提供 `dashboard/dist/index.html` 这套 React 前端；仓库内仍保留 `dashboard/dashboard.html` 作为历史单文件参考页。
 
 > 💡 详细教程请看 [Getting Started 指南](docs/getting-started.md)
 
@@ -387,7 +387,7 @@ Windows PowerShell：
                            └─────────────────┬─────────────────┘
                                              │ 下达指令
                            ┌─────────────────▼─────────────────┐
-                           │          � 云霄 (main)            │
+                           │          🧭 云霄 (main)            │
                            │    分拣：闲聊直接回 / 指令建任务      │
                            └─────────────────┬─────────────────┘
                                              │ 转发指令
@@ -420,7 +420,7 @@ Windows PowerShell：
 
 | 节点 | Agent ID | 职责 | 擅长领域 |
 |------|----------|------|---------|
-| � **云霄** | `main` | 消息分拣、需求整理 | 闲聊识别、指令提炼、标题概括 |
+| 🧭 **云霄** | `main` | 消息分拣、需求整理 | 闲聊识别、指令提炼、标题概括 |
 | 📜 **星枢** | `xingshu` | 接令、规划、拆解 | 需求理解、任务分解、方案设计 |
 | 🔍 **棱镜** | `lengjing` | 校核、把关、打回修订 | 质量评审、风险识别、标准把控 |
 | 📮 **中继** | `zhongji` | 路由、协调、汇总 | 任务调度、进度跟踪、结果整合 |
@@ -476,7 +476,7 @@ edict/
 │   ├── xulie/                # 序列 · 人事管理
 │   └── tianyan/SOUL.md         # 天眼 · 情报枢纽
 ├── dashboard/
-│   ├── dashboard.html          # 总控台看板（单文件 · 零依赖 · ~2500 行）
+│   ├── dashboard.html          # 历史单文件看板（保留参考）
 │   ├── dist/                   # React 前端构建产物（Docker 镜像内包含，本地可选）
 │   ├── auth.py                 # Dashboard 登录鉴权
 │   ├── bridge_discuss.py       # 舰桥议程（多节点 LLM 讨论引擎）
@@ -646,14 +646,13 @@ curl http://localhost:7891/api/remote-skills-list
 | **一键安装 / 一键启动** | `install.sh` 自动配置，`start.sh` 一条命令启动全部服务 |
 | **systemd 生产部署** | `edict.service` 支持 systemd 守护进程，开机自启 |
 | **15 秒同步** | 数据自动刷新，看板倒计时显示 |
-| **每日启动** | 首次打开播放舰桥启动动画 |
 | **Dashboard 鉴权** | `auth.py` 提供看板登录认证 |
 | **每日启动** | 首次打开播放舰桥启动动画 |
 | **远程 Skills 生态** | 从 GitHub/URL 一键导入能力，支持版本管理 + CLI + API + UI |
 
 ---
 
-## � 深入了解
+## 📚 深入了解
 
 ### 核心文档
 
@@ -758,7 +757,7 @@ python3 scripts/skill_manager.py import-skills-hub --agents xingshu
 </details>
 
 ---
-## �🗺️ Roadmap
+## 🗺️ Roadmap
 
 > 完整路线图及参与方式：[ROADMAP.md](ROADMAP.md)
 

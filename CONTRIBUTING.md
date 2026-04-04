@@ -86,13 +86,13 @@ python3 dashboard/server.py
 open http://127.0.0.1:7891
 ```
 
-> 💡 **看板开箱即用**：`server.py` 内嵌 `dashboard/dashboard.html`，Docker 镜像包含预构建 React 前端
+> 💡 **看板开箱即用**：`server.py` 默认提供 `dashboard/dist/index.html` 这套 React 前端；`dashboard/dashboard.html` 仅保留为历史单文件参考页
 
 ### 项目结构速览
 
 | 目录/文件 | 说明 | 改动频率 |
 |----------|------|--------|
-| `dashboard/dashboard.html` | 看板前端（单文件，零依赖，开箱即用） | 🔥 高 |
+| `dashboard/dashboard.html` | 历史单文件看板（保留参考，不是默认入口） | 🔶 中 |
 | `dashboard/server.py` | API 服务器（stdlib，~2200 行） | 🔥 高 |
 | `agents/*/SOUL.md` | 12 个 Agent 人格模板 | 🔶 中 |
 | `dashboard/bridge_discuss.py` | 舰桥议程引擎（多节点 LLM 讨论） | 🔶 中 |
@@ -231,13 +231,13 @@ curl -s http://localhost:7891/api/live-status | python3 -m json.tool | head -20
 
 ---
 
-## � 安全漏洞
+## 🔒 安全漏洞
 
 发现安全问题？请**不要**通过公开 Issue 报告。详见 [SECURITY.md](SECURITY.md)。
 
 ---
 
-## �📬 联系方式
+## 📬 联系方式
 
 - GitHub Issues: [提交问题](https://github.com/muqing-kg/edict/issues)
 - GitHub Discussions: [社区讨论](https://github.com/muqing-kg/edict/discussions)

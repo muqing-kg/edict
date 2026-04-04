@@ -73,7 +73,7 @@ open http://127.0.0.1:7891
 
 > 💡 **提示**：`run_loop.sh` 每 15 秒自动同步数据。可用 `&` 后台运行。
 
-> 💡 **看板即开即用**：`server.py` 内嵌 `dashboard/dashboard.html`，无需额外构建。Docker 镜像包含预构建的 React 前端。
+> 💡 **看板即开即用**：`server.py` 默认提供 `dashboard/dist/index.html` 这套 React 前端，无需额外启动前端开发服务器。仓库内保留 `dashboard/dashboard.html` 作为历史单文件参考页。
 
 ## 第五步：发送第一道指令
 

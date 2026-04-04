@@ -1,6 +1,6 @@
-# 三省六部 Windows 安装说明（简明版 + 详细版）
+# 舰载体系 Windows 安装说明（简明版 + 详细版）
 
-> 适用于 Windows 用户。本文默认你下载的是**已经包含 Windows 兼容修复**的版本，因此不需要再手动改 Python 文件。
+> 适用于 Windows 用户。当前版本保留 `main` 作为运行时入口 ID，界面语义上对应“云霄入口”；其余节点使用 `xingshu / lengjing / zhongji / yuanliu / wenshu / weikong / tanzhen / jiwu / xulie / tianyan`。
 
 ---
 
@@ -18,28 +18,16 @@ C:\Users\<YOUR_USER>\.openclaw\workspace\skills\edict
 ---
 
 ## 2. 如果以前装过旧版本，先删除旧链接
-如果你之前已经安装过旧版三省六部，请先检查并删除这些目录里的旧 `data` / `scripts` 链接：
+如果你之前已经安装过更早的版本，请先检查 `C:\Users\<YOUR_USER>\.openclaw` 下所有 `workspace*` 目录，删除里面旧的 `data` / `scripts` 链接。
 
-```text
-C:\Users\<YOUR_USER>\.openclaw\workspace-taizi
-C:\Users\<YOUR_USER>\.openclaw\workspace-zhongshu
-C:\Users\<YOUR_USER>\.openclaw\workspace-menxia
-C:\Users\<YOUR_USER>\.openclaw\workspace-shangshu
-C:\Users\<YOUR_USER>\.openclaw\workspace-hubu
-C:\Users\<YOUR_USER>\.openclaw\workspace-libu
-C:\Users\<YOUR_USER>\.openclaw\workspace-bingbu
-C:\Users\<YOUR_USER>\.openclaw\workspace-xingbu
-C:\Users\<YOUR_USER>\.openclaw\workspace-gongbu
-C:\Users\<YOUR_USER>\.openclaw\workspace-libu_hr
-C:\Users\<YOUR_USER>\.openclaw\workspace-zaochao
-```
+重点处理：
 
-重点删除里面已有的：
+- `workspace\data`
+- `workspace-*\data`
+- `workspace\scripts`
+- `workspace-*\scripts`
 
-- `data`
-- `scripts`
-
-如果不清理旧链接，第一次运行安装脚本时，可能会因为“链接已经存在”而失败。
+如果不清理旧链接，第一次运行安装脚本时，可能会因为“链接已经存在”而失败，或者继续读到旧仓库的数据。
 
 ---
 
@@ -97,6 +85,8 @@ python dashboard\server.py
 http://127.0.0.1:7891
 ```
 
+> `server.py` 默认提供的是 `dashboard/dist/index.html` 这套 React 前端；`dashboard/dashboard.html` 只保留为历史单文件参考页。
+
 ---
 
 # 二、安装完成后你应该看到什么
@@ -104,8 +94,8 @@ http://127.0.0.1:7891
 正常情况下：
 
 - 面板可以打开
-- `官员总览` 能显示三省六部官员信息
-- `模型配置` 能显示 agent 列表
+- `节点总览` 能显示节点活跃度和令牌统计
+- `模型矩阵` 能显示 agent 列表和模型信息
 - 右上角 Gateway 状态正常
 - 倒计时会持续刷新页面数据
 
@@ -117,8 +107,8 @@ http://127.0.0.1:7891
 
 如果你以前已经安装过旧版本，那么：
 
-- `workspace-*\data`
-- `workspace-*\scripts`
+- `workspace*\data`
+- `workspace*\scripts`
 
 很可能还指向旧仓库。
 
@@ -126,6 +116,7 @@ http://127.0.0.1:7891
 
 - symlink / junction 创建失败
 - 安装脚本看起来跑完了，但实际 workspace 仍然连着旧版本
+- dashboard 打开了，但显示的是旧数据
 
 所以最稳妥的做法是：
 
@@ -135,29 +126,61 @@ http://127.0.0.1:7891
 
 ## 2. 为什么安装后还要核对 agent / subagent 配置
 
-在部分环境里，安装脚本可能没有把三省六部的 agent 配置完整落进 `openclaw.json`。
+在部分环境里，安装脚本可能没有把当前节点配置完整落进 `openclaw.json`。
 
-因此建议你安装后主动确认：
+因此建议你安装后主动确认至少存在以下 agent id：
 
-- `taizi`
-- `zhongshu`
-- `menxia`
-- `shangshu`
-- `hubu`
-- `libu`
-- `bingbu`
-- `xingbu`
-- `gongbu`
-- `libu_hr`
-- `zaochao`
+- `main`
+- `xingshu`
+- `lengjing`
+- `zhongji`
+- `yuanliu`
+- `wenshu`
+- `weikong`
+- `tanzhen`
+- `jiwu`
+- `xulie`
+- `tianyan`
 
-这些 agent 是否都存在，且 `subagents.allowAgents` 是否正确。
+其中：
+
+- `main` 是唯一运行时入口
+- 界面语义上的“云霄入口”对应 `main`
+- 其余节点权限关系可直接参考仓库根目录的 `agents.json`
 
 如果缺失，可以直接参考本仓库附带的 `agents.json` 脱敏模板；使用前请先把 `<YOUR_USER>` 替换成你自己的系统用户名。
 
 ---
 
-## 3. `agents.json` 是干什么用的\r\n\r\n本仓库附带了一个脱敏版的：\r\n\r\n```text\r\nagents.json\r\n```\r\n\r\n它保留了三省六部 agent 的配置结构，包括：\r\n\r\n- `id`\r\n- `name`\r\n- `workspace`\r\n- `agentDir`\r\n- `subagents.allowAgents`\r\n\r\n其中路径部分已经用 `<YOUR_USER>` 做了脱敏处理。\r\n\r\n使用时请先把：\r\n\r\n```text\r\n<YOUR_USER>\r\n```\r\n\r\n替换成你自己的 Windows 用户名，再复制到对应配置中。\r\n\r\n---\r\n\r\n## 4. 为什么还要确认 `tools.sessions.visibility = all`
+## 3. `agents.json` 是干什么用的
+
+本仓库附带了一个脱敏版的：
+
+```text
+agents.json
+```
+
+它保留了当前节点配置结构，包括：
+
+- `id`
+- `name`
+- `workspace`
+- `agentDir`
+- `subagents.allowAgents`
+
+其中路径部分已经用 `<YOUR_USER>` 做了脱敏处理。
+
+使用时请先把：
+
+```text
+<YOUR_USER>
+```
+
+替换成你自己的 Windows 用户名，再复制到对应配置中。
+
+---
+
+## 4. 为什么还要确认 `tools.sessions.visibility = all`
 
 这个设置会影响 session 工具可见性，对多 agent 协同很重要。
 
@@ -173,13 +196,11 @@ openclaw config set tools.sessions.visibility all
 
 ## 5. 为什么还要跑 `run_loop.sh`
 
-dashboard 右上角虽然有一个 5 秒倒计时，但它只是：
-
-- 每 5 秒重新读取一次现有 API 数据
+dashboard 右上角虽然有一个倒计时，但它只是定时重新读取现有 API 数据。
 
 它并不会自动帮你在后台持续生成数据。
 
-真正负责后台数据刷新的是：
+真正负责后台数据刷新的，是：
 
 ```bash
 bash run_loop.sh
@@ -188,7 +209,7 @@ bash run_loop.sh
 它会持续执行同步脚本，更新：
 
 - `live_status.json`
-- `officials_stats.json`
+- `nodes_stats.json`
 - `agent_config.json`
 
 所以：
@@ -213,7 +234,7 @@ Windows 下也建议正常运行 `run_loop.sh`。
 排查时建议直接访问：
 
 ```text
-http://127.0.0.1:7891/api/officials-stats
+http://127.0.0.1:7891/api/nodes-stats
 http://127.0.0.1:7891/api/agent-config
 http://127.0.0.1:7891/api/live-status
 ```
@@ -224,21 +245,24 @@ http://127.0.0.1:7891/api/live-status
 
 ## 7. 如果 dashboard 提示 Gateway 没启动怎么办
 
-如果你使用的是本修复版，这个问题应该已经被修好。
+如果你使用的是当前版本，这个问题通常不是 Gateway 真没起，而是：
 
-之前在 Windows 上误报的原因是 dashboard 的 Gateway 检测逻辑偏 Linux。修复后已改为优先使用端口 / probe 检测。
+- 浏览器连到旧的本地 server
+- 当前目录不是你要运行的那份仓库
+- 页面缓存还停在旧资源
 
 所以如果你仍然看到 Gateway 未启动：
 
-- 先确认自己现在运行的是修复后的 `dashboard/server.py`
+- 先确认自己现在运行的是当前仓库里的 `dashboard/server.py`
 - 再确认浏览器访问的不是旧的本地 server 进程
+- 必要时强制刷新页面，确认加载的是新的 `dashboard/dist` 产物
 
 ---
 
 # 四、推荐的完整使用顺序
 
 ## 第一步
-清理旧 `workspace-*` 里的 `data` / `scripts`
+清理旧 `workspace*` 里的 `data` / `scripts`
 
 ## 第二步
 运行：

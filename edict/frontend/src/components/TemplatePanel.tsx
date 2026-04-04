@@ -66,10 +66,11 @@ export default function TemplatePanel() {
       for (const p of formTpl.params) {
         params[p.key] = formVals[p.key] || p.default || '';
       }
-      // Keep canonical org labels for backend/script compatibility.
+      // 新任务统一从云霄入口接入，后续再由核心链路自动流转。
       const r = await api.createTask({
         title: cmd.substring(0, 120),
-        org: '星枢',
+        org: '云霄',
+        owner: '云霄',
         targetDept: formTpl.depts[0] || '',
         priority: 'normal',
         templateId: formTpl.id,
@@ -198,7 +199,7 @@ export default function TemplatePanel() {
                     }}
                   >
                     <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
-                      📡 将写入星枢链路的任务脉冲：
+                      📡 将写入云霄入口的任务脉冲：
                     </div>
                     <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{previewCmd}</div>
                   </div>

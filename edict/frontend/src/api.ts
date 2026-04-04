@@ -387,6 +387,7 @@ export interface ScanAction {
 export interface CreateTaskPayload {
   title: string;
   org: string;
+  owner?: string;
   targetDept?: string;
   priority?: string;
   templateId?: string;

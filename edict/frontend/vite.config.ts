@@ -7,7 +7,8 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    outDir: 'dist',
+    // 运行时由 dashboard/server.py 直接读取 dashboard/dist。
+    outDir: '../../dashboard/dist',
     emptyOutDir: true,
   },
 })

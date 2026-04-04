@@ -789,7 +789,7 @@
     <!-- 自由下旨 -->
     <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--line)">
       <div style="font-size:13px;font-weight:700;margin-bottom:8px">✍️ 自由下旨</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">无需模板，直接用自然语言描述你的需求，系统会自动派发给太子处理</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">无需模板，直接用自然语言描述你的需求，系统会自动派发给云霄接收并分拣</div>
       <textarea id="free-edict-input" style="width:100%;min-height:80px;resize:vertical;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;color:var(--text);font-family:inherit" placeholder="例如：帮我分析一下最近三个月的销售数据趋势，生成图表和报告…"></textarea>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
         <select id="free-edict-priority" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text)">
@@ -3267,7 +3267,8 @@ async function executeTemplate(e, tplId){
     }
     const r = await postJ(API+'/create-task', {
       title: cmd.substring(0, 120),
-      org: '星枢',
+      org: '云霄',
+      owner: '云霄',
       targetDept: t.depts[0] || '',
       priority: 'normal',
       templateId: tplId,
@@ -3333,7 +3334,8 @@ async function submitFreeEdict(){
   try{
     const r = await postJ(API+'/create-task', {
       title: text.substring(0,120),
-      org: '中书省',
+      org: '云霄',
+      owner: '云霄',
       priority: priority,
       templateId: '',
       params: { content: text },

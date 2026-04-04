@@ -477,7 +477,7 @@ All contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
-## � Examples
+## 📚 Examples
 
 The `examples/` directory contains real end-to-end use cases:
 
